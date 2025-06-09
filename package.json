@@ -1,0 +1,57 @@
+{
+  "name": "miniml",
+  "version": "1.0.0",
+  "description": "Minimal semantic data modelling language for generating SQL",
+  "author": "Dave Templin <dtempx@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dtempx/miniml.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dtempx/miniml/issues"
+  },
+  "homepage": "https://github.com/dtempx/miniml#readme",
+  "keywords": [
+    "modeling-language",
+    "data-modeling-language",
+    "data-modeling",
+    "data-model",
+    "semantic-model",
+    "semantic-layer",
+    "sql",
+    "metrics",
+    "dimensions",
+    "measures",
+    "lookml"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "miniml": "./command.js"
+  },
+  "scripts": {
+    "build": "npx tsc",
+    "test": "npx mocha"
+  },
+  "dependencies": {
+    "cli-options": "^1.0.0",
+    "he": "^1.2.0",
+    "node-sql-parser": "^5.3.9",
+    "nunjucks": "^3.2.4",
+    "word-wrap": "^1.2.5",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^5.2.1",
+    "@types/chai-as-promised": "^8.0.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.15.3",
+    "@types/nunjucks": "^3.2.6",
+    "chai": "^5.2.0",
+    "chai-as-promised": "^8.0.1",
+    "mocha": "^11.1.0",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,6 @@
+{
+    "dimensions": ["date", "store_name"],
+    "measures": ["total_amount", "count"],
+    "where": "store_name = 'Acme Store'",
+    "having": "price_avg >= 10"
+}

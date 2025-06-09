@@ -1,0 +1,34 @@
+# Source TypeScript files
+*.ts
+!*.d.ts
+
+# Development files
+tsconfig.json
+CLAUDE.md
+yarn.lock
+
+# Test files
+test/
+*.test.js
+*.test.js.map
+
+# Build artifacts that shouldn't be published
+*.js.map
+tmp/
+
+# Node modules (shouldn't be needed but good practice)
+node_modules/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git files
+.git/
+.gitignore

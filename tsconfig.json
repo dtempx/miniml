@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+      "target": "ESNext",
+      "module": "ESNext",
+      "moduleResolution": "node",
+      "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "removeComments": true,
+      "resolveJsonModule": true,
+      "sourceMap": true,
+      "strict": true,
+      "declaration": true
+  },
+  "exclude": ["node_modules"]
+}

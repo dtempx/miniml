@@ -1,0 +1,4 @@
+{
+    "dimensions": ["date"],
+    "measures": ["total_amount"]
+}

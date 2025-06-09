@@ -1,0 +1,53 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Program",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/**/*.js"
+            ],
+            //"program": "${workspaceFolder}/index.js",
+            "program": "${file}",
+            "args": []
+        },
+        {
+            "name": "Run All Tests",
+            "type": "node",
+            "request": "launch",
+            "skipFiles": ["<node_internals>/**"],
+            "outFiles": ["${workspaceFolder}/**/*.js"],
+            "sourceMaps": true,
+            "internalConsoleOptions": "openOnSessionStart",
+            "outputCapture": "std", // WORKAROUND https://github.com/microsoft/vscode/issues/19750
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/node_modules/mocha/lib/cli/cli.js",
+            "args": ["--config", "${workspaceFolder}/.mocharc.yaml"],
+            "runtimeArgs": ["--experimental-specifier-resolution=node"] // WORKAROUND (see devnotes)
+        },
+        {
+            "name": "Run Selected Test",
+            "type": "node",
+            "request": "launch",
+            "skipFiles": ["<node_internals>/**"],
+            "outFiles": ["${workspaceFolder}/**/*.js"],
+            "sourceMaps": true,
+            "internalConsoleOptions": "openOnSessionStart",
+            "outputCapture": "std", // WORKAROUND https://github.com/microsoft/vscode/issues/19750
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/node_modules/mocha/lib/cli/cli.js",
+            "args": [
+                "--config", "${workspaceFolder}/.mocharc.yaml",
+                "--grep", "${selectedText}"
+            ],
+            "env": {
+                "DEBUG": "1"
+            },
+            "runtimeArgs": ["--experimental-specifier-resolution", "node"]
+        }
+    ]
+}
