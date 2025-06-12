@@ -18,29 +18,30 @@ const args = parseArgs({
         limit: "maximum number of rows to return",
         distinct: "use DISTINCT in SELECT",
         date_granularity: "date truncation granularity (day, week, month, quarter, year)"
-    },
-    validate: ({ dimensions, measures }) => {
-        if (!dimensions && !measures)
-            return "At least one of --dimensions or --measures must be specified";
     }
 });
 
 try {
     const file = !args[0].endsWith(".yaml") ? `${args[0]}.yaml` : args[0];
     const model = loadModelSync(file);
-    const query = renderQuery(model, {
-        dimensions: args.dimensions ? args.dimensions.split(",") : [],
-        measures: args.measures ? args.measures.split(",") : [],
-        date_from: args.date_from,
-        date_to: args.date_to,
-        where: args.where,
-        having: args.having,
-        order_by: args.order_by ? args.order_by.split(",") : [],
-        limit: args.limit ? parseInt(args.limit) : undefined,
-        distinct: !!args.distinct,
-        date_granularity: args.date_granularity
-    });
-    console.log(query);
+    if (Object.keys(args).length === 1) {
+        console.log(model.info);
+    }
+    else {
+        const query = renderQuery(model, {
+            dimensions: args.dimensions ? args.dimensions.split(",") : [],
+            measures: args.measures ? args.measures.split(",") : [],
+            date_from: args.date_from,
+            date_to: args.date_to,
+            where: args.where,
+            having: args.having,
+            order_by: args.order_by ? args.order_by.split(",") : [],
+            limit: args.limit ? parseInt(args.limit) : undefined,
+            distinct: !!args.distinct,
+            date_granularity: args.date_granularity
+        });
+        console.log(query);
+    }
 }
 catch (err) {
     console.log(err instanceof Error ? err.message : JSON.stringify(err));

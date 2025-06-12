@@ -1,6 +1,6 @@
 {
   "name": "miniml",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Minimal semantic data modelling language for generating SQL",
   "author": "Dave Templin <dtempx@gmail.com>",
   "license": "MIT",
@@ -17,13 +17,16 @@
     "data-modeling-language",
     "data-modeling",
     "data-model",
+    "data",
     "semantic-model",
     "semantic-layer",
     "sql",
     "metrics",
     "dimensions",
     "measures",
-    "lookml"
+    "lookml",
+    "mcp",
+    "model context protocol"
   ],
   "type": "module",
   "main": "index.js",
