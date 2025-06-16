@@ -1,10 +1,10 @@
 # MiniML
 
-A minimal, embeddable semantic data modeling language for generating SQL queries from YAML model definitions.
+A minimal, embeddable semantic data modeling language for generating SQL queries from YAML model definitions, inspired by LookML.
 
-Ideal for connecting data to AI with MCP.
+Ideal for connecting data to AI via MCP!
 
-MiniML produces SQL queries from dimensions and measures defined in a simple YAML model syntax.
+MiniML produces data-dictionary and SQL query output from dimensions and measures defined in a simple YAML model syntax.
 Designed to be a stand-alone and light-weight library, embeddable in any server or app without requiring additional data platforming.
 Supports BigQuery and Snowflake dialects.
 
@@ -538,7 +538,7 @@ renderQuery(model, {
 
 ## Security
 
-MiniML includes comprehensive SQL injection protection for user-provided query parameters:
+Because MiniML allows flexible `where` and `having` clauses to be specified in native SQL format, comprehensive SQL validation is implemented to guard against SQL injection attacks for user-provided query parameters:
 
 - **AST-based validation**: All user-provided SQL expressions are parsed and validated using node-sql-parser
 - **Allowlist approach**: Only safe SQL constructs are permitted (comparisons, logical operators, basic functions)

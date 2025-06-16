@@ -2,8 +2,8 @@ import { MinimlDef, MinimlModel } from "./common.js";
 import { loadYamlFile, loadYamlFileSync } from "./yaml.js";
 import { renderJinjaTemplate } from "./jinja.js";
 
-export async function loadModel(file: string): Promise<MinimlModel> {
-    const model = await loadYamlFile(file) as MinimlModel;
+export function createModel(obj: {}, file?: string): MinimlModel {
+    const model = obj as MinimlModel;
     if (!model.join)
         model.join = {};
 
@@ -15,17 +15,14 @@ export async function loadModel(file: string): Promise<MinimlModel> {
     return model;
 }
 
+export async function loadModel(file: string): Promise<MinimlModel> {
+    const obj = await loadYamlFile(file) as MinimlModel;
+    return createModel(obj, file);
+}
+
 export function loadModelSync(file: string): MinimlModel {
-    const model = loadYamlFileSync(file) as MinimlModel;
-    if (!model.join)
-        model.join = {};
-
-    validateModel(model);
-    expandDimensions(model.dimensions);
-    expandMeasures(model.measures);
-    expandModelInfo(model, file);
-
-    return model;
+    const obj = loadYamlFileSync(file) as MinimlModel;
+    return createModel(obj, file);
 }
 
 // Substitutes dimensions with corresponding `sql` metadata if defined, mirroring the alias.
@@ -62,7 +59,7 @@ function expandMetadataDefs(dictionary: Record<string, MinimlDef>): void {
 }
 
 // Expands info section of metadata using Jinja templating.
-function expandModelInfo(model: MinimlModel, file: string): void {
+function expandModelInfo(model: MinimlModel, file: string | undefined): void {
     model.info = `
 ## DIMENSIONS
 {%- for dimension in dimensions %}
@@ -80,7 +77,7 @@ ${model.info || ""}`.trim();
         dimensions: Object.keys(model.dimensions).map(key => ({ key, description: model.dimensions[key].description })),
         measures: Object.keys(model.measures).map(key => ({ key, description: model.measures[key].description }))
     });
-    if (!model.dialect)
+    if (!model.dialect && file)
         inferModelDialect(file);
     if (model.dialect)
         model.info += `\n\nUse ${model.dialect.toUpperCase()} syntax for generating SQL filter expressions.`;
