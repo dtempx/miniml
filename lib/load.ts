@@ -1,9 +1,9 @@
 import { MinimlDef, MinimlModel } from "./common.js";
-import { loadYamlFile, loadYamlFileSync } from "./yaml.js";
+import { loadYamlFile, loadYamlFileSync, parseYAML } from "./yaml.js";
 import { renderJinjaTemplate } from "./jinja.js";
 
-export function createModel(obj: {}, file?: string): MinimlModel {
-    const model = obj as MinimlModel;
+export function createModel(obj: string | {}, file?: string): MinimlModel {
+    const model = typeof obj === "string" ? parseYAML(obj) as MinimlModel : obj as MinimlModel;
     if (!model.join)
         model.join = {};
 
