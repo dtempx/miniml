@@ -16,13 +16,13 @@ describe("SQL Injection Protection", () => {
     describe("Basic Validation", () => {
         it("should allow safe WHERE expressions", () => {
             const result = validateWhereClause("customer_name = 'Acme Corp'", model);
-            expect(result.isValid).to.be.true;
+            expect(result.ok).to.be.true;
             expect(result.errors).to.be.empty;
         });
 
         it("should allow safe HAVING expressions", () => {
             const result = validateHavingClause("count > 100", model);
-            expect(result.isValid).to.be.true;
+            expect(result.ok).to.be.true;
             expect(result.errors).to.be.empty;
         });
 
@@ -31,7 +31,7 @@ describe("SQL Injection Protection", () => {
                 "customer_name = 'Test' AND date >= '2024-01-01' OR count IS NOT NULL", 
                 model
             );
-            expect(result.isValid).to.be.true;
+            expect(result.ok).to.be.true;
         });
     });
 
@@ -39,28 +39,28 @@ describe("SQL Injection Protection", () => {
         it("should block classic injection attempts", () => {
             const malicious = "1=1; DROP TABLE users; --";
             const result = validateWhereClause(malicious, model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('DROP'))).to.be.true;
         });
 
         it("should prevent UNION-based attacks", () => {
             const malicious = "1=1 UNION SELECT password FROM users";
             const result = validateWhereClause(malicious, model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('UNION'))).to.be.true;
         });
 
         it("should block subquery injections", () => {
             const malicious = "customer_id IN (SELECT id FROM secret_table)";
             const result = validateWhereClause(malicious, model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('Subqueries'))).to.be.true;
         });
 
         it("should prevent comment-based injections", () => {
             const malicious = "customer_name = 'test' -- OR 1=1";
             const result = validateWhereClause(malicious, model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('--'))).to.be.true;
         });
 
@@ -73,7 +73,7 @@ describe("SQL Injection Protection", () => {
 
             attacks.forEach(attack => {
                 const result = validateWhereClause(attack, model);
-                expect(result.isValid).to.be.false;
+                expect(result.ok).to.be.false;
                 expect(result.errors.length).to.be.greaterThan(0);
             });
         });
@@ -87,7 +87,7 @@ describe("SQL Injection Protection", () => {
 
             attacks.forEach(attack => {
                 const result = validateWhereClause(attack, model);
-                expect(result.isValid).to.be.false;
+                expect(result.ok).to.be.false;
                 expect(result.errors.length).to.be.greaterThan(0);
             });
         });
@@ -96,7 +96,7 @@ describe("SQL Injection Protection", () => {
     describe("Column Reference Validation", () => {
         it("should validate column references against model", () => {
             const result = validateWhereClause("nonexistent_column = 'value'", model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('not found'))).to.be.true;
         });
 
@@ -105,7 +105,7 @@ describe("SQL Injection Protection", () => {
             const dimensions = Object.keys(model.dimensions);
             if (dimensions.length > 0) {
                 const result = validateWhereClause(`${dimensions[0]} = 'value'`, model);
-                expect(result.isValid).to.be.true;
+                expect(result.ok).to.be.true;
             }
         });
 
@@ -113,7 +113,7 @@ describe("SQL Injection Protection", () => {
             const measures = Object.keys(model.measures);
             if (measures.length > 0) {
                 const result = validateHavingClause(`${measures[0]} > 100`, model);
-                expect(result.isValid).to.be.true;
+                expect(result.ok).to.be.true;
             }
         });
     });
@@ -128,7 +128,7 @@ describe("SQL Injection Protection", () => {
 
             safeFunctions.forEach(expr => {
                 const result = validateWhereClause(expr, model);
-                expect(result.isValid).to.be.true;
+                expect(result.ok).to.be.true;
             });
         });
 
@@ -141,7 +141,7 @@ describe("SQL Injection Protection", () => {
 
             unsafeFunctions.forEach(expr => {
                 const result = validateWhereClause(expr, model);
-                expect(result.isValid).to.be.false;
+                expect(result.ok).to.be.false;
             });
         });
     });
@@ -150,14 +150,14 @@ describe("SQL Injection Protection", () => {
         it("should limit expression length", () => {
             const longExpression = "customer_name = '" + "a".repeat(1000) + "'";
             const result = validateWhereClause(longExpression, model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('too long'))).to.be.true;
         });
 
         it("should limit nesting depth", () => {
             const deepExpression = "(" + "(".repeat(15) + "1=1" + ")".repeat(15) + ")";
             const result = validateWhereClause(deepExpression, model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors.some(e => e.includes('nesting depth'))).to.be.true;
         });
     });
@@ -205,37 +205,98 @@ describe("SQL Injection Protection", () => {
 
     describe("Dialect-Specific Validation", () => {
         it("should handle BigQuery dialect", () => {
-            const bigqueryModel = { ...model, dialect: 'bigquery' };
-            const result = validateWhereClause("DATE(date) = '2024-01-01'", bigqueryModel);
-            expect(result.isValid).to.be.true;
+            const result = validateWhereClause("DATE(date) = '2024-01-01'", { ...model, dialect: 'bigquery' });
+            expect(result.ok).to.be.true;
         });
 
         it("should handle Snowflake dialect", () => {
-            const snowflakeModel = { ...model, dialect: 'snowflake' };
-            const result = validateWhereClause("TO_DATE(date) = '2024-01-01'", snowflakeModel);
-            expect(result.isValid).to.be.true;
+            const result = validateWhereClause("TO_DATE(date) = '2024-01-01'", { ...model, dialect: 'snowflake' });
+            expect(result.ok).to.be.true;
+        });
+    });
+
+    describe("Join Validation", () => {
+        it("should throw SqlValidationError for undefined join in dimension", () => {
+            // Create a model with a dimension that references an undefined join
+            const testModel = {
+                ...model,
+                dimensions: {
+                    ...model.dimensions,
+                    test_dimension: {
+                        key: "test_dimension",
+                        description: "Test dimension with undefined join",
+                        sql: "test_field",
+                        join: "undefined_join"
+                    }
+                }
+            };
+
+            expect(() => {
+                renderQuery(testModel, {
+                    dimensions: ["test_dimension"],
+                    measures: Object.keys(model.measures).slice(0, 1)
+                });
+            }).to.throw(SqlValidationError)
+              .with.property('message')
+              .that.includes('Undefined join reference: undefined_join');
+        });
+
+        it("should throw SqlValidationError for undefined join in measure", () => {
+            // Create a model with a measure that references an undefined join
+            const testModel = {
+                ...model,
+                measures: {
+                    ...model.measures,
+                    test_measure: {
+                        key: "test_measure",
+                        description: "Test measure with undefined join",
+                        sql: "SUM(test_field)",
+                        join: "undefined_join"
+                    }
+                }
+            };
+
+            expect(() => {
+                renderQuery(testModel, {
+                    dimensions: Object.keys(model.dimensions).slice(0, 1),
+                    measures: ["test_measure"]
+                });
+            }).to.throw(SqlValidationError)
+              .with.property('message')
+              .that.includes('Undefined join reference: undefined_join');
+        });
+
+        it("should work correctly with valid join references", () => {
+            // This should not throw an error
+            const sql = renderQuery(model, {
+                dimensions: ["customer_name"],
+                measures: ["total_amount"]
+            });
+            
+            expect(sql).to.be.a('string');
+            expect(sql).to.include('JOIN acme.customers USING (customer_id)');
         });
     });
 
     describe("Edge Cases", () => {
         it("should handle empty expressions", () => {
             const result = validateWhereClause("", model);
-            expect(result.isValid).to.be.true;
+            expect(result.ok).to.be.true;
         });
 
         it("should handle whitespace-only expressions", () => {
             const result = validateWhereClause("   ", model);
-            expect(result.isValid).to.be.true;
+            expect(result.ok).to.be.true;
         });
 
         it("should handle null expressions", () => {
             const result = validateWhereClause(null as any, model);
-            expect(result.isValid).to.be.true;
+            expect(result.ok).to.be.true;
         });
 
         it("should provide helpful error messages", () => {
             const result = validateWhereClause("invalid_column = 'test'", model);
-            expect(result.isValid).to.be.false;
+            expect(result.ok).to.be.false;
             expect(result.errors[0]).to.include('not found');
             expect(result.errors[0]).to.include('Available columns');
         });

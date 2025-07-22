@@ -2,9 +2,10 @@
 
 A minimal, embeddable semantic data modeling language for generating SQL queries from YAML model definitions, inspired by LookML.
 
-Ideal for connecting data to AI via MCP!
+Generates SQL queries driven by a semantic model and selected dimensions and measures. Capable of generating optimal SQL from minimal queries to very complex queries with multiple joins based on the specified configuration.
 
-MiniML produces data-dictionary and SQL query output from dimensions and measures defined in a simple YAML model syntax.
+Also generates metadata for each model suitable for use by AI to execute queries.
+
 Designed to be a stand-alone and light-weight library, embeddable in any server or app without requiring additional data platforming.
 Supports BigQuery and Snowflake dialects.
 
@@ -100,7 +101,7 @@ npx miniml sales.yaml \
 ```
 
 **OUTPUT**
-```
+```sql
 SELECT
   DATE(sale_date) AS date,
   customer_name AS customer_name,

@@ -54,10 +54,22 @@ export function renderQuery(model: MinimlModel, {
     }
 
     // Determine the unique set of joins based on the references to dimensions and measures
-    const joins = Array.from(new Set([
+    const join_keys = Array.from(new Set([
         ...dimensions.map(key => model.dimensions[key].join as string).filter(Boolean),
         ...measures.map(key => model.measures[key].join as string).filter(Boolean)
-    ])).map(key => model.join[key]);
+    ]));
+    
+    // Validate that all referenced joins are defined
+    const undefined_joins = join_keys.filter(key => !model.join[key]);
+    if (undefined_joins.length > 0) {
+        throw new SqlValidationError(
+            `Undefined join reference: ${undefined_joins.join(', ')}`,
+            [`Undefined join reference: ${undefined_joins.join(', ')}`],
+            ['Add the missing join definitions to your model', 'Check for typos in join references']
+        );
+    }
+    
+    const joins = join_keys.map(key => model.join[key]);
 
     const group_by = dimensions.length > 0 && measures.length > 0;
     const query = [
@@ -86,7 +98,7 @@ export function renderQuery(model: MinimlModel, {
 
     if (where) {
         const validation = validateWhereClause(where, model);
-        if (!validation.isValid) {
+        if (!validation.ok) {
             throw new SqlValidationError(
                 `Invalid WHERE clause: ${validation.errors.join(', ')}`,
                 validation.errors,
@@ -107,7 +119,7 @@ export function renderQuery(model: MinimlModel, {
 
     if (having) {
         const validation = validateHavingClause(having, model);
-        if (!validation.isValid) {
+        if (!validation.ok) {
             throw new SqlValidationError(
                 `Invalid HAVING clause: ${validation.errors.join(', ')}`,
                 validation.errors,

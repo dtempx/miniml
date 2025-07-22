@@ -3,7 +3,7 @@ const { Parser } = pkg;
 import { MinimlModel } from "./common.js";
 
 export interface ValidationResult {
-    isValid: boolean;
+    ok: boolean;
     errors: string[];
     warnings: string[];
 }
@@ -24,7 +24,7 @@ export class UnknownColumnError extends SqlValidationError {}
 export class ComplexityLimitError extends SqlValidationError {}
 
 // Safe SQL functions per dialect
-const SAFE_FUNCTIONS = {
+const SAFE_FUNCTIONS: Record<string, string[]> = {
     bigquery: [
         'UPPER', 'LOWER', 'TRIM', 'LENGTH', 'SUBSTR',
         'DATE', 'TIMESTAMP', 'EXTRACT', 'DATE_TRUNC',
@@ -63,25 +63,22 @@ const COMMENT_PATTERNS = ['--', '/*', '*/', '#'];
 
 export function validateSqlExpression(
     expression: string,
-    dialect: 'bigquery' | 'snowflake',
     model: MinimlModel
 ): ValidationResult {
     const result: ValidationResult = {
-        isValid: true,
+        ok: true,
         errors: [],
         warnings: []
     };
 
-    if (!expression || expression.trim() === '') {
+    if (!expression || expression.trim() === '')
         return result;
-    }
 
     try {
         // Basic safety checks first
         const basicValidation = performBasicSafetyChecks(expression);
-        if (!basicValidation.isValid) {
+        if (!basicValidation.ok)
             return basicValidation;
-        }
 
         // Parse the expression into AST
         const parser = new Parser();
@@ -90,27 +87,25 @@ export function validateSqlExpression(
         try {
             // Wrap in a dummy SELECT to make it parseable
             const wrappedSql = `SELECT * FROM dummy WHERE ${expression}`;
-            ast = parser.astify(wrappedSql);
+            ast = parser.astify(wrappedSql, { database: model.dialect });
         } catch (parseError: any) {
-            result.isValid = false;
+            result.ok = false;
             result.errors.push(`Invalid SQL syntax: ${parseError?.message || 'Unknown parsing error'}`);
             return result;
         }
 
         // Validate AST structure
-        const astValidation = validateAstSafety(ast, dialect);
-        if (!astValidation.isValid) {
+        const astValidation = validateAstSafety(ast, model.dialect);
+        if (!astValidation.ok)
             return astValidation;
-        }
 
         // Validate column references
         const columnValidation = validateColumnReferences(ast, model);
-        if (!columnValidation.isValid) {
+        if (!columnValidation.ok)
             return columnValidation;
-        }
 
     } catch (error: any) {
-        result.isValid = false;
+        result.ok = false;
         result.errors.push(`Validation error: ${error?.message || 'Unknown validation error'}`);
     }
 
@@ -118,13 +113,11 @@ export function validateSqlExpression(
 }
 
 export function validateWhereClause(where: string, model: MinimlModel): ValidationResult {
-    const dialect = (model.dialect?.toLowerCase() === 'snowflake') ? 'snowflake' : 'bigquery';
-    return validateSqlExpression(where, dialect, model);
+    return validateSqlExpression(where, model);
 }
 
 export function validateHavingClause(having: string, model: MinimlModel): ValidationResult {
-    const dialect = (model.dialect?.toLowerCase() === 'snowflake') ? 'snowflake' : 'bigquery';
-    return validateSqlExpression(having, dialect, model);
+    return validateSqlExpression(having, model);
 }
 
 export function validateDateInput(date: string): boolean {
@@ -152,7 +145,7 @@ export function validateDateInput(date: string): boolean {
 
 function performBasicSafetyChecks(expression: string): ValidationResult {
     const result: ValidationResult = {
-        isValid: true,
+        ok: true,
         errors: [],
         warnings: []
     };
@@ -162,7 +155,7 @@ function performBasicSafetyChecks(expression: string): ValidationResult {
     for (const construct of DANGEROUS_CONSTRUCTS) {
         const regex = new RegExp(`\\b${construct}\\b`, 'i');
         if (regex.test(expression)) {
-            result.isValid = false;
+            result.ok = false;
             result.errors.push(`Dangerous SQL construct detected: ${construct}`);
         }
     }
@@ -170,25 +163,25 @@ function performBasicSafetyChecks(expression: string): ValidationResult {
     // Check for comment patterns
     for (const pattern of COMMENT_PATTERNS) {
         if (expression.includes(pattern)) {
-            result.isValid = false;
+            result.ok = false;
             result.errors.push(`SQL comments are not allowed: ${pattern}`);
         }
     }
 
     // Check for suspicious patterns
     if (/\bUNION\b/i.test(expression)) {
-        result.isValid = false;
+        result.ok = false;
         result.errors.push('UNION statements are not allowed in filter expressions');
     }
 
     if (/\bSELECT\b/i.test(expression)) {
-        result.isValid = false;
+        result.ok = false;
         result.errors.push('Subqueries are not allowed. Use simple comparisons instead.');
     }
 
     // Check complexity limits
     if (expression.length > 1000) {
-        result.isValid = false;
+        result.ok = false;
         result.errors.push('Expression too long. Maximum length is 1000 characters.');
     }
 
@@ -205,16 +198,16 @@ function performBasicSafetyChecks(expression: string): ValidationResult {
     }
     
     if (maxDepth > 10) {
-        result.isValid = false;
+        result.ok = false;
         result.errors.push('Expression too complex. Maximum nesting depth is 10 levels.');
     }
 
     return result;
 }
 
-function validateAstSafety(ast: any, dialect: 'bigquery' | 'snowflake'): ValidationResult {
+function validateAstSafety(ast: any, dialect: string): ValidationResult {
     const result: ValidationResult = {
-        isValid: true,
+        ok: true,
         errors: [],
         warnings: []
     };
@@ -231,13 +224,13 @@ function validateAstSafety(ast: any, dialect: 'bigquery' | 'snowflake'): Validat
         
         // Complexity limits
         if (nodeCount > 100) {
-            result.isValid = false;
+            result.ok = false;
             result.errors.push('Expression too complex. Maximum of 100 AST nodes allowed.');
             return;
         }
 
         if (depth > 10) {
-            result.isValid = false;
+            result.ok = false;
             result.errors.push('Expression nesting too deep. Maximum depth is 10 levels.');
             return;
         }
@@ -252,7 +245,7 @@ function validateAstSafety(ast: any, dialect: 'bigquery' | 'snowflake'): Validat
                 case 'create':
                 case 'drop':
                 case 'alter':
-                    result.isValid = false;
+                    result.ok = false;
                     result.errors.push(`${node.type} statements are not allowed in filter expressions`);
                     return;
             }
@@ -262,7 +255,7 @@ function validateAstSafety(ast: any, dialect: 'bigquery' | 'snowflake'): Validat
         if (node.type === 'function' && node.name) {
             const funcName = node.name.toUpperCase();
             if (!safeFunctions.includes(funcName)) {
-                result.isValid = false;
+                result.ok = false;
                 result.errors.push(`Function '${funcName}' is not allowed. Safe functions: ${safeFunctions.join(', ')}`);
                 return;
             }
@@ -294,7 +287,7 @@ function validateAstSafety(ast: any, dialect: 'bigquery' | 'snowflake'): Validat
 
 function validateColumnReferences(ast: any, model: MinimlModel): ValidationResult {
     const result: ValidationResult = {
-        isValid: true,
+        ok: true,
         errors: [],
         warnings: []
     };
@@ -307,24 +300,35 @@ function validateColumnReferences(ast: any, model: MinimlModel): ValidationResul
     const referencedColumns = new Set<string>();
 
     function extractColumnReferences(node: any): void {
-        if (!node || typeof node !== 'object') {
+        if (!node || typeof node !== 'object')
             return;
-        }
 
         // Look for column references
-        if (node.type === 'column_ref' && node.column && node.column !== '*') {
-            const columnName = node.column;
-            referencedColumns.add(columnName);
+        if (node.type === 'column_ref') {
+            // Handle simple string column names
+            if (typeof node.column === 'string' && node.column !== '' && node.column !== '*')
+                referencedColumns.add(node.column);
+            // Handle object-based column references with expr.value
+            else if (typeof node.column === 'object' && node.column !== null && 
+                     typeof node.column.expr === 'object' && typeof node.column.expr.value === 'string')
+                referencedColumns.add(node.column.expr.value);
+            
+            // Handle qualified references with subFields (schema.table.column)
+            if (Array.isArray(node.subFields) && node.subFields.length > 0) {
+                // The actual column name is the last subField
+                const columnName = node.subFields[node.subFields.length - 1];
+                if (typeof columnName === 'string' && columnName !== '')
+                    referencedColumns.add(columnName);
+            }
         }
 
         // Recursively check child nodes
         for (const key in node) {
             const value = node[key];
-            if (Array.isArray(value)) {
+            if (Array.isArray(value))
                 value.forEach(item => extractColumnReferences(item));
-            } else if (typeof value === 'object') {
+            else if (typeof value === 'object')
                 extractColumnReferences(value);
-            }
         }
     }
 
@@ -332,21 +336,19 @@ function validateColumnReferences(ast: any, model: MinimlModel): ValidationResul
     if (ast && typeof ast === 'object') {
         // Handle single AST node or array
         const selectStmt = Array.isArray(ast) ? ast[0] : ast;
-        if (selectStmt && selectStmt.where) {
+        if (selectStmt && selectStmt.where)
             extractColumnReferences(selectStmt.where);
-        }
     }
 
     // Validate all referenced columns exist in model
-    for (const column of referencedColumns) {
+    for (const column of referencedColumns)
         if (!availableColumns.has(column)) {
-            result.isValid = false;
+            result.ok = false;
             const available = Array.from(availableColumns).slice(0, 10).join(', ');
             const totalCount = availableColumns.size;
             const availableText = totalCount > 10 ? `${available} (and ${totalCount - 10} more)` : available;
             result.errors.push(`Column '${column}' not found. Available columns: ${availableText}`);
         }
-    }
 
     return result;
 }
