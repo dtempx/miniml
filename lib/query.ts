@@ -1,5 +1,6 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
+import { extractFieldReferences } from "./parse.js";
 
 export interface MinimlQueryOptions {
     dimensions?: string[];
@@ -26,7 +27,10 @@ export function renderQuery(model: MinimlModel, {
     distinct,
     date_granularity
 }: MinimlQueryOptions): string {
-    validateQueryInfo(model, dimensions, measures, order_by);
+    const where_refs = extractFieldReferences(where, model);
+    const having_refs = extractFieldReferences(having, model);
+
+    validateQueryInfo(model, dimensions, measures, where_refs, having_refs, order_by);
     
     // Validate date inputs to prevent SQL injection
     if (date_from && !validateDateInput(date_from))
@@ -55,19 +59,20 @@ export function renderQuery(model: MinimlModel, {
 
     // Determine the unique set of joins based on the references to dimensions and measures
     const join_keys = Array.from(new Set([
-        ...dimensions.map(key => model.dimensions[key].join as string).filter(Boolean),
-        ...measures.map(key => model.measures[key].join as string).filter(Boolean)
+        ...dimensions.map(key => model.dimensions[key].join!).filter(Boolean),
+        ...measures.map(key => model.measures[key].join!).filter(Boolean),
+        ...where_refs.map(key => model.dimensions[key].join!).filter(Boolean),
+        ...having_refs.map(key => model.measures[key].join!).filter(Boolean)
     ]));
     
     // Validate that all referenced joins are defined
     const undefined_joins = join_keys.filter(key => !model.join[key]);
-    if (undefined_joins.length > 0) {
+    if (undefined_joins.length > 0)
         throw new SqlValidationError(
             `Undefined join reference: ${undefined_joins.join(', ')}`,
             [`Undefined join reference: ${undefined_joins.join(', ')}`],
             ['Add the missing join definitions to your model', 'Check for typos in join references']
         );
-    }
     
     const joins = join_keys.map(key => model.join[key]);
 
@@ -105,7 +110,7 @@ export function renderQuery(model: MinimlModel, {
                 ['Use simple comparisons like "column = value"', 'Check column names against your model']
             );
         }
-        where_clause.push(`(${expandFilterReferences(where, model.dimensions, dimensions)})`);
+        where_clause.push(`(${expandWhereReferences(where, model.dimensions, dimensions)})`);
     }
         
     if (model.where)
@@ -126,7 +131,7 @@ export function renderQuery(model: MinimlModel, {
                 ['Use simple comparisons like "measure > value"', 'Reference only measures defined in your model']
             );
         }
-        query.push(`HAVING ${expandFilterReferences(having, model.measures, measures)}`);
+        query.push(`HAVING ${expandWhereReferences(having, model.measures, measures)}`);
     }
 
     if (order_by.length > 0)
@@ -138,17 +143,17 @@ export function renderQuery(model: MinimlModel, {
     return query.filter(Boolean).join("\n");
 }
 
-// Replaces specific keys in a filter string with their corresponding SQL expressions
+// Replaces specific keys in a where clause with their corresponding SQL expressions
 // from a dictionary, but only for keys not listed in the references array and where the
 // SQL expression is a valid function-wrapped expression.
-function expandFilterReferences(filter: string, dictionary: Record<string, MinimlDef>, references: string[]): string {
-    let result = filter;
+function expandWhereReferences(where_clause: string, dictionary: Record<string, MinimlDef>, references: string[]): string {
+    let result = where_clause;
     if (result) {
         // narrow to keys that are not a member of references
         const keys = Object.keys(dictionary).filter(key => !references.includes(key));
         for (const key of keys) {
             const regexp = new RegExp(`\\b${key}\\b`);
-            if (regexp.test(filter)) {
+            if (regexp.test(where_clause)) {
                 const { sql } = dictionary[key];
                 // unwrap the SQL expression without the alias
                 const unwrapped = sql?.includes(" AS ") ? sql.slice(0, sql.lastIndexOf(" AS ")).trim() : undefined;
@@ -164,9 +169,11 @@ function validateKeys(keys: string[], dictionary: string[]): string[] {
     return keys.filter(key => !dictionary.includes(key));
 }
 
-function validateQueryInfo(model: MinimlModel, dimensions: string[], measures: string[], order_by: string[]): void {
+function validateQueryInfo(model: MinimlModel, dimensions: string[], measures: string[], where: string[], having: string[], order_by: string[]): void {
     const invalid_dimensions = validateKeys(dimensions, Object.keys(model.dimensions));
     const invalid_measures = validateKeys(measures, Object.keys(model.measures));
+    const invalid_where = validateKeys(where, Object.keys(model.dimensions));
+    const invalid_having = validateKeys(having, Object.keys(model.measures));
     const invalid_order = validateKeys(order_by.map(key => key.startsWith("-") ? key.slice(1) : key), [...Object.keys(model.dimensions), ...Object.keys(model.measures)]);
 
     const errors = [];
@@ -174,8 +181,16 @@ function validateQueryInfo(model: MinimlModel, dimensions: string[], measures: s
         errors.push(`- dimensions: ${invalid_dimensions.join(", ")}`);
     if (invalid_measures.length > 0)
         errors.push(`- measures: ${invalid_measures.join(", ")}`);
+    if (invalid_where.length > 0)
+        errors.push(`- where: ${invalid_where.join(", ")}`);
+    if (invalid_having.length > 0)
+        errors.push(`- having: ${invalid_having.join(", ")}`);
     if (invalid_order.length > 0)
         errors.push(`- order_by: ${invalid_order.join(", ")}`);
     if (errors.length > 0)
-        throw `The following keys are invalid:\n${errors.join("\n")}`;    
+        throw new SqlValidationError(
+            `The following keys are invalid:\n${errors.join("\n")}`,
+            errors,
+            ['Check that all referenced keys exist in your model']
+        );
 }

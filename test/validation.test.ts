@@ -276,6 +276,43 @@ describe("SQL Injection Protection", () => {
             expect(sql).to.be.a('string');
             expect(sql).to.include('JOIN acme.customers USING (customer_id)');
         });
+
+        it("should include joins for fields referenced in WHERE clause", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"],
+                where: "customer_name = 'John Doe'"
+            });
+            
+            expect(sql).to.be.a('string');
+            expect(sql).to.include('JOIN acme.customers USING (customer_id)');
+            expect(sql).to.include("customer_name = 'John Doe'");
+        });
+
+        it("should include joins for fields referenced in HAVING clause", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"],
+                having: "total_amount > 1000"
+            });
+            
+            expect(sql).to.be.a('string');
+            expect(sql).to.include("total_amount > 1000");
+        });
+
+        it("should include multiple joins for fields referenced in both WHERE and HAVING clauses", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount", "count"],
+                where: "store_name = 'Main Street'",
+                having: "count > 5"
+            });
+            
+            expect(sql).to.be.a('string');
+            expect(sql).to.include('JOIN acme.stores USING (store_id)');
+            expect(sql).to.include("store_name = 'Main Street'");
+            expect(sql).to.include("count > 5");
+        });
     });
 
     describe("Edge Cases", () => {

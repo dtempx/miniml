@@ -1,6 +1,6 @@
 import pkg from "node-sql-parser";
 const { Parser } = pkg;
-import { MinimlModel } from "./common.js";
+import { extractFieldReferencesFromNode, MinimlModel } from "./common.js";
 
 export interface ValidationResult {
     ok: boolean;
@@ -297,57 +297,24 @@ function validateColumnReferences(ast: any, model: MinimlModel): ValidationResul
         ...Object.keys(model.measures)
     ]);
 
-    const referencedColumns = new Set<string>();
-
-    function extractColumnReferences(node: any): void {
-        if (!node || typeof node !== 'object')
-            return;
-
-        // Look for column references
-        if (node.type === 'column_ref') {
-            // Handle simple string column names
-            if (typeof node.column === 'string' && node.column !== '' && node.column !== '*')
-                referencedColumns.add(node.column);
-            // Handle object-based column references with expr.value
-            else if (typeof node.column === 'object' && node.column !== null && 
-                     typeof node.column.expr === 'object' && typeof node.column.expr.value === 'string')
-                referencedColumns.add(node.column.expr.value);
-            
-            // Handle qualified references with subFields (schema.table.column)
-            if (Array.isArray(node.subFields) && node.subFields.length > 0) {
-                // The actual column name is the last subField
-                const columnName = node.subFields[node.subFields.length - 1];
-                if (typeof columnName === 'string' && columnName !== '')
-                    referencedColumns.add(columnName);
-            }
-        }
-
-        // Recursively check child nodes
-        for (const key in node) {
-            const value = node[key];
-            if (Array.isArray(value))
-                value.forEach(item => extractColumnReferences(item));
-            else if (typeof value === 'object')
-                extractColumnReferences(value);
-        }
-    }
+    const reference_fields = new Set<string>();
 
     // Extract column references from AST
     if (ast && typeof ast === 'object') {
         // Handle single AST node or array
         const selectStmt = Array.isArray(ast) ? ast[0] : ast;
         if (selectStmt && selectStmt.where)
-            extractColumnReferences(selectStmt.where);
+            extractFieldReferencesFromNode(selectStmt.where, reference_fields);
     }
 
-    // Validate all referenced columns exist in model
-    for (const column of referencedColumns)
-        if (!availableColumns.has(column)) {
+    // Validate all referenced fields exist in model
+    for (const key of reference_fields)
+        if (!availableColumns.has(key)) {
             result.ok = false;
             const available = Array.from(availableColumns).slice(0, 10).join(', ');
             const totalCount = availableColumns.size;
             const availableText = totalCount > 10 ? `${available} (and ${totalCount - 10} more)` : available;
-            result.errors.push(`Column '${column}' not found. Available columns: ${availableText}`);
+            result.errors.push(`Field '${key}' not found. Available columns: ${availableText}`);
         }
 
     return result;

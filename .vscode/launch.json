@@ -27,8 +27,8 @@
             "program": "${workspaceFolder}/command.js",
             "args": [
                 "tmp/test1.yaml",
-                "--dimensions=platform_name,seller_name,seller_id,seller_key,domain_name",
-                "--where=seller_name ILIKE '%target%' OR domain_name ILIKE '%target%'"
+                "--dimensions=name",
+                "--measures=count"
             ]
         },
         {

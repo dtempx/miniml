@@ -26,3 +26,4 @@ export declare class SqlValidationError extends Error {
     suggestions?: string[] | undefined;
     constructor(message: string, violations: string[], suggestions?: string[] | undefined);
 }
+export declare function extractFieldReferencesFromNode(node: any, field_set: Set<string>): void;
