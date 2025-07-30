@@ -87,7 +87,7 @@ export function renderQuery(model: MinimlModel, {
         ...joins
     ];
 
-    const where_clause = [];
+    const where_clause: string[] = [];
     if (model.date_field) {
         if (date_from && date_to)
             where_clause.push(`${model.date_field} BETWEEN '${date_from}' AND '${date_to}'`);
@@ -95,10 +95,8 @@ export function renderQuery(model: MinimlModel, {
             where_clause.push(`${model.date_field} >= '${date_from}'`);
         else if (date_to)
             where_clause.push(`${model.date_field} <= '${date_to}'`);
-        else {
-            const days = model.default_date_range_days ?? 30;
-            where_clause.push(`${model.date_field} >= DATEADD(DAY, -${days}, CURRENT_DATE)`);
-        }
+        else if (model.default_date_range)
+            appendDefaultDateRange(where_clause, model);
     }
 
     if (where) {
@@ -110,14 +108,15 @@ export function renderQuery(model: MinimlModel, {
                 ['Use simple comparisons like "column = value"', 'Check column names against your model']
             );
         }
-        where_clause.push(`(${expandWhereReferences(where, model.dimensions, dimensions)})`);
+        where_clause.push(`(${where})`);
     }
         
     if (model.where)
         where_clause.push(`(${model.where})`);
 
     if (where_clause.length > 0)
-        query.push(`WHERE ${where_clause.join("\nAND ")}`);
+        query.push(`WHERE ${expandWhereReferences(where_clause.join("\nAND "), model.dimensions)}`);
+        
 
     if (group_by)
         query.push("GROUP BY ALL");
@@ -131,7 +130,7 @@ export function renderQuery(model: MinimlModel, {
                 ['Use simple comparisons like "measure > value"', 'Reference only measures defined in your model']
             );
         }
-        query.push(`HAVING ${expandWhereReferences(having, model.measures, measures)}`);
+        query.push(`HAVING ${expandWhereReferences(having, model.measures)}`);
     }
 
     if (order_by.length > 0)
@@ -143,26 +142,74 @@ export function renderQuery(model: MinimlModel, {
     return query.filter(Boolean).join("\n");
 }
 
+function appendDefaultDateRange(where_clause: string[], model: MinimlModel): void {
+    if (!model.date_field || !model.default_date_range || !model.dialect)
+        return;
+    let result: RegExpMatchArray | null;
+
+    // last 30 days, last 90 days, etc.
+    result = model.default_date_range.match(/^last\s+(\d+)\s+(hours?|days?|weeks?|months?|years?|years)$/i);
+    if (result)
+        where_clause.push(constructLastNDaysExpression(model.dialect, model.date_field, parseInt(result[1]), result[2], model.include_today ?? true));
+}
+
+function constructLastNDaysExpression(dialect: string, date_field: string, num: number, date_part: string, include_today?: boolean): string {
+    let expression = `${date_field} >= ${constructDateSubExpression(dialect, date_field, num, date_part)}`;
+    if (!include_today)
+        expression += ` AND ${date_field} < ${constructDateSubExpression(dialect, "CURRENT_TIMESTAMP", 1, date_part)}`;
+    return expression;
+}
+
+function constructDateSubExpression(dialect: string, date_field: string, num: number, date_part: string): string {
+    date_part = parseDatePart(date_part);
+    switch (dialect) {
+        case "bigquery":
+            return `DATE_SUB(${date_field}, INTERVAL ${num} ${date_part})`;
+        case "snowflake":
+            return `DATEADD(${date_part}, -${num}, ${date_field})`;
+        default:
+            throw new Error(`Invalid dialect "${dialect}"`);
+    }
+}
+
 // Replaces specific keys in a where clause with their corresponding SQL expressions
-// from a dictionary, but only for keys not listed in the references array and where the
-// SQL expression is a valid function-wrapped expression.
-function expandWhereReferences(where_clause: string, dictionary: Record<string, MinimlDef>, references: string[]): string {
+// from a dictionary, but only for keys where the SQL expression is a valid function-wrapped expression.
+function expandWhereReferences(where_clause: string, dictionary: Record<string, MinimlDef>): string {
+    if (!where_clause)
+        return where_clause;
     let result = where_clause;
-    if (result) {
-        // narrow to keys that are not a member of references
-        const keys = Object.keys(dictionary).filter(key => !references.includes(key));
-        for (const key of keys) {
-            const regexp = new RegExp(`\\b${key}\\b`);
-            if (regexp.test(where_clause)) {
-                const { sql } = dictionary[key];
+    for (const key of Object.keys(dictionary)) {
+        const regexp = new RegExp(`\\b${key}\\b`, "g");
+        if (regexp.test(where_clause)) {
+            const { sql } = dictionary[key];
+            if (sql !== key) {
                 // unwrap the SQL expression without the alias
                 const unwrapped = sql?.includes(" AS ") ? sql.slice(0, sql.lastIndexOf(" AS ")).trim() : undefined;
                 if (unwrapped)
-                    result = result.replaceAll(key, unwrapped); // replace key with sql expression
+                    result = result.replaceAll(regexp, unwrapped); // replace key with sql expression
             }
         }
     }
     return result;
+}
+
+function parseDatePart(text: string): string {
+    if (/^days?$/i.test(text))
+        return "DAY";
+    else if (/^weeks?$/i.test(text))
+        return "WEEK";
+    else if (/^months?$/i.test(text))
+        return "MONTH";
+    else if (/^years?$/i.test(text))
+        return "YEAR";
+    else if (/^hours?$/i.test(text))
+        return "HOUR";
+    else if (/^minutes?$/i.test(text))
+        return "MINUTE";
+    else if (/^seconds?$/i.test(text))
+        return "SECOND";
+    else
+        throw new Error(`Invalid date part "${text}"`);
 }
 
 function validateKeys(keys: string[], dictionary: string[]): string[] {

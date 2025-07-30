@@ -1,0 +1,3 @@
+refactor expandWhereReferences to use AST instead of regexp's
+validate default_date_range parameter
+validate date_field parameter

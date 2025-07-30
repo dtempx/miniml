@@ -297,7 +297,7 @@ describe("SQL Injection Protection", () => {
             });
             
             expect(sql).to.be.a('string');
-            expect(sql).to.include("total_amount > 1000");
+            expect(sql).to.include("SUM(total_amount) > 1000");
         });
 
         it("should include multiple joins for fields referenced in both WHERE and HAVING clauses", () => {
@@ -311,7 +311,7 @@ describe("SQL Injection Protection", () => {
             expect(sql).to.be.a('string');
             expect(sql).to.include('JOIN acme.stores USING (store_id)');
             expect(sql).to.include("store_name = 'Main Street'");
-            expect(sql).to.include("count > 5");
+            expect(sql).to.include("COUNT(*) > 5");
         });
     });
 

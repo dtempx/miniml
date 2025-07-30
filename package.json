@@ -1,6 +1,6 @@
 {
   "name": "miniml",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A minimal, embeddable semantic data modeling language for generating SQL queries from YAML model definitions. Inspired by LookML.",
   "author": "Dave Templin <dtempx@gmail.com>",
   "license": "MIT",

@@ -26,9 +26,7 @@
             ],
             "program": "${workspaceFolder}/command.js",
             "args": [
-                "tmp/test1.yaml",
-                "--dimensions=name",
-                "--measures=count"
+                "test/models/salesforce/sales.yaml"
             ]
         },
         {

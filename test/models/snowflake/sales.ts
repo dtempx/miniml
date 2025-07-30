@@ -19,8 +19,9 @@ describe("sales", () => {
         const name = test.replace(/\.json$/, "");
         it(name, () => {
             const options = JSON.parse(fs.readFileSync(path.join(__dirname, `${name}.json`), "utf8"));
-            const sql = fs.readFileSync(path.join(__dirname, `${name}.sql`), "utf8");
-            expect(renderQuery(model, options)).equals(sql);
+            const sql_1 = renderQuery(model, options);
+            const sql_2 = fs.readFileSync(path.join(__dirname, `${name}.sql`), "utf8");
+            expect(sql_1).equals(sql_2);
         });
     }
 });

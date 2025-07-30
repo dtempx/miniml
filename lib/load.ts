@@ -10,6 +10,12 @@ export function createModel(obj: string | {}, file?: string): MinimlModel {
         model.dimensions = {};
     if (!model.measures)
         model.measures = {};
+    if (!model.date_field)
+        model.date_field = defaultDateField(Object.keys(model.dimensions));
+    if (model.date_field)
+        model.date_field = model.date_field.trim();
+    if (model.default_date_range)
+        model.default_date_range = model.default_date_range.trim();
 
     validateModel(model);
     expandDimensions(model.dimensions);
@@ -27,6 +33,28 @@ export async function loadModel(file: string): Promise<MinimlModel> {
 export function loadModelSync(file: string): MinimlModel {
     const obj = loadYamlFileSync(file) as MinimlModel;
     return createModel(obj, file);
+}
+
+function defaultDateField(keys: string[]): string | undefined {
+    const predicates: Array<(key: string) => boolean> = [
+        key => key === "date",
+        key => key === "timestamp",
+        key =>
+            key.endsWith("date") ||
+            key.startsWith("date") ||
+            key.endsWith("time") ||
+            key.endsWith("_at") ||
+            key.endsWith("_on") ||
+            key.endsWith("_until") ||
+            key.includes("datetime")
+    ];
+
+    keys = keys.map(key => key.toLowerCase());
+    for (const predicate of predicates) {
+        const key = keys.find(predicate);
+        if (key)
+            return key;
+    }
 }
 
 // Substitutes dimensions with corresponding `sql` metadata if defined, mirroring the alias.
@@ -82,7 +110,7 @@ ${model.info || ""}`.trim();
         measures: Object.keys(model.measures).map(key => ({ key, description: model.measures[key].description }))
     });
     if (!model.dialect && file)
-        inferModelDialect(file);
+        model.dialect = inferModelDialect(file);
     if (model.dialect)
         model.info += `\n\nUse ${model.dialect.toUpperCase()} syntax for generating SQL filter expressions.`;
 }
@@ -97,9 +125,4 @@ function inferModelDialect(file: string): string {
 }
 
 function validateModel(model: MinimlModel): void {
-    if (model.default_date_range_days !== undefined) {
-        if (!Number.isInteger(model.default_date_range_days) || model.default_date_range_days <= 0) {
-            throw new Error(`default_date_range_days must be a positive integer, got: ${model.default_date_range_days}`);
-        }
-    }
 }

@@ -1,8 +1,7 @@
 description: Sales fact table capturing transactional-level purchase data across products, stores, and customers.
 
 from: acme.sales
-default_date_range_days: 90
-date_field: sale_date
+default_date_range: last 7 days
 
 join:
   customer_join: JOIN acme.customers USING (customer_id)

@@ -11,8 +11,9 @@ export interface MinimlModel {
     from: string;
     join: Record<string, string>;
     where: string;
-    date_field: string;
-    default_date_range_days?: number;
+    date_field?: string;
+    default_date_range?: string;
+    include_today?: boolean;
     dimensions: Record<string, MinimlDef>;
     measures: Record<string, MinimlDef>;
     info: string;

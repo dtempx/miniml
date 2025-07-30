@@ -5,7 +5,7 @@ SELECT
   COUNT(*) AS count
 FROM acme.sales
 JOIN acme.stores USING (store_id)
-WHERE sale_date >= DATEADD(DAY, -90, CURRENT_DATE)
+WHERE DATE(sale_date) >= DATEADD(DAY, -7, DATE(sale_date))
 AND (store_name = 'Acme Store')
 GROUP BY ALL
 HAVING AVG(unit_price) >= 10
