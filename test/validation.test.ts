@@ -8,25 +8,41 @@ import { MinimlModel } from "../lib/common.js";
 describe("SQL Injection Protection", () => {
     let model: MinimlModel;
 
-    before(() => {
-        // Load test model
-        model = loadModelSync("test/models/bigquery/sales.yaml");
-    });
+    before(() =>
+        model = loadModelSync("test/validation.test.yaml"));
 
     describe("Basic Validation", () => {
-        it("should allow safe WHERE expressions", () => {
+        it("should allow basic WHERE expressions", () => {
             const result = validateWhereClause("customer_name = 'Acme Corp'", model);
             expect(result.ok).to.be.true;
             expect(result.errors).to.be.empty;
         });
 
-        it("should allow safe HAVING expressions", () => {
+        it("should allow basic HAVING expressions", () => {
             const result = validateHavingClause("count > 100", model);
             expect(result.ok).to.be.true;
             expect(result.errors).to.be.empty;
         });
 
-        it("should allow complex safe expressions", () => {
+        it("should handle DATE_TRUNC in BigQuery correctly", () => {
+            const sql = renderQuery({ ...model, dialect: "bigquery" }, {
+                dimensions: ["date"],
+                date_granularity: "day"
+            });
+            expect(sql).to.be.a('string');
+            expect(sql).to.include("DATE_TRUNC(DATE(sale_date), DAY)");
+        });
+
+        it("should handle DATE_TRUNC in Snowflake correctly", () => {
+            const sql = renderQuery({ ...model, dialect: "snowflake" }, {
+                dimensions: ["date"],
+                date_granularity: "MONTH"
+            });
+            expect(sql).to.be.a('string');
+            expect(sql).to.include("DATE_TRUNC(MONTH, DATE(sale_date))");
+        });
+
+        it("should allow complex where clause expressions", () => {
             const result = validateWhereClause(
                 "customer_name = 'Test' AND date >= '2024-01-01' OR count IS NOT NULL", 
                 model

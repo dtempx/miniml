@@ -1,3 +1,5 @@
 refactor expandWhereReferences to use AST instead of regexp's
 validate default_date_range parameter
 validate date_field parameter
+validate that all sql inputs end with "as <name>", a lot of assumptions this is the case
+validate dialect is only bigquery or snowflake

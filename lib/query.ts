@@ -1,6 +1,7 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
 import { extractFieldReferences } from "./parse.js";
+import { constructDateSubExpression, constructDateTruncExpression, constructLastNDaysExpression } from "./dialect.js"
 
 export interface MinimlQueryOptions {
     dimensions?: string[];
@@ -47,16 +48,6 @@ export function renderQuery(model: MinimlModel, {
             ['Use YYYY-MM-DD format (e.g., "2024-01-31")']
         );
 
-    const dimension_fields = dimensions.map(key => model.dimensions[key].sql);
-    const measure_fields = measures.map(key => model.measures[key].sql);
-
-    // Truncate the date field if a date granularity is specified
-    if (date_granularity) {
-        const i = dimension_fields.findIndex(key => key === model.date_field);
-        if (i >= 0)
-            dimension_fields[i] = `DATE_TRUNC('${date_granularity.toUpperCase()}', ${model.date_field}) AS ${model.date_field}`;
-    }
-
     // Determine the unique set of joins based on the references to dimensions and measures
     const join_keys = Array.from(new Set([
         ...dimensions.map(key => model.dimensions[key].join!).filter(Boolean),
@@ -76,6 +67,8 @@ export function renderQuery(model: MinimlModel, {
     
     const joins = join_keys.map(key => model.join[key]);
 
+    const dimension_fields = dimensions.map(key =>  key === model.date_field && date_granularity ? applyDateGranularity(date_granularity, key, model.dimensions[key].sql!, model.dialect) : model.dimensions[key].sql);
+    const measure_fields = measures.map(key => model.measures[key].sql);
     const group_by = dimensions.length > 0 && measures.length > 0;
     const query = [
         distinct && !group_by ? "SELECT DISTINCT" : "SELECT",
@@ -153,23 +146,10 @@ function appendDefaultDateRange(where_clause: string[], model: MinimlModel): voi
         where_clause.push(constructLastNDaysExpression(model.dialect, model.date_field, parseInt(result[1]), result[2], model.include_today ?? true));
 }
 
-function constructLastNDaysExpression(dialect: string, date_field: string, num: number, date_part: string, include_today?: boolean): string {
-    let expression = `${date_field} >= ${constructDateSubExpression(dialect, date_field, num, date_part)}`;
-    if (!include_today)
-        expression += ` AND ${date_field} < ${constructDateSubExpression(dialect, "CURRENT_TIMESTAMP", 1, date_part)}`;
-    return expression;
-}
-
-function constructDateSubExpression(dialect: string, date_field: string, num: number, date_part: string): string {
-    date_part = parseDatePart(date_part);
-    switch (dialect) {
-        case "bigquery":
-            return `DATE_SUB(${date_field}, INTERVAL ${num} ${date_part})`;
-        case "snowflake":
-            return `DATEADD(${date_part}, -${num}, ${date_field})`;
-        default:
-            throw new Error(`Invalid dialect "${dialect}"`);
-    }
+function applyDateGranularity(date_granularity: string, key: string, date_expr: string, dialect: string): string {
+    const [expr, alias] = unwrapSqlExpressionAlias(date_expr);
+    const expr_trunc = constructDateTruncExpression(dialect, expr, date_granularity || "DAY");
+    return `${expr_trunc} AS ${alias ?? key}`;
 }
 
 // Replaces specific keys in a where clause with their corresponding SQL expressions
@@ -193,23 +173,14 @@ function expandWhereReferences(where_clause: string, dictionary: Record<string, 
     return result;
 }
 
-function parseDatePart(text: string): string {
-    if (/^days?$/i.test(text))
-        return "DAY";
-    else if (/^weeks?$/i.test(text))
-        return "WEEK";
-    else if (/^months?$/i.test(text))
-        return "MONTH";
-    else if (/^years?$/i.test(text))
-        return "YEAR";
-    else if (/^hours?$/i.test(text))
-        return "HOUR";
-    else if (/^minutes?$/i.test(text))
-        return "MINUTE";
-    else if (/^seconds?$/i.test(text))
-        return "SECOND";
-    else
-        throw new Error(`Invalid date part "${text}"`);
+function unwrapSqlExpressionAlias(exprression: string): [string] | [string, string] {
+    const i = exprression.toUpperCase().lastIndexOf(" AS ");
+    if (i > 0) {
+        const expression = exprression.slice(0, i).trim();
+        const alias = exprression.slice(i + 4).trim();
+        return [expression, alias];
+    }
+    return [exprression];
 }
 
 function validateKeys(keys: string[], dictionary: string[]): string[] {
