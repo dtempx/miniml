@@ -1,7 +1,7 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
 import { extractFieldReferences } from "./parse.js";
-import { constructDateSubExpression, constructDateTruncExpression, constructLastNDaysExpression } from "./dialect.js"
+import { constructDateRangeExpression, constructDateTruncExpression } from "./dialect.js"
 
 export interface MinimlQueryOptions {
     dimensions?: string[];
@@ -138,12 +138,13 @@ export function renderQuery(model: MinimlModel, {
 function appendDefaultDateRange(where_clause: string[], model: MinimlModel): void {
     if (!model.date_field || !model.default_date_range || !model.dialect)
         return;
+
     let result: RegExpMatchArray | null;
 
     // last 30 days, last 90 days, etc.
     result = model.default_date_range.match(/^last\s+(\d+)\s+(hours?|days?|weeks?|months?|years?|years)$/i);
     if (result)
-        where_clause.push(constructLastNDaysExpression(model.dialect, model.date_field, parseInt(result[1]), result[2], model.include_today ?? true));
+        where_clause.push(constructDateRangeExpression(model.dialect, model.date_field, parseInt(result[1]), result[2], model.include_today ?? true));
 }
 
 function applyDateGranularity(date_granularity: string, key: string, date_expr: string, dialect: string): string {

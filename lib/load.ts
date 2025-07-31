@@ -65,7 +65,7 @@ function expandDimensions(dimensions: Record<string, MinimlDef>): void {
         if (!obj.sql)
             obj.sql = obj.key;
         else if (!/\s+AS\s+[a-z0-9_]+$/i.test(obj.sql))
-            obj.sql = `${obj.sql} AS ${obj.key}`;
+            obj.sql = `${obj.sql} AS ${obj.key}`; // if no alias is defined, use the key as alias
 }
 
 // Substitutes measures with corresponding `sql` metadata if defined, mirroring the alias.
