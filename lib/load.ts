@@ -6,6 +6,8 @@ export function createModel(obj: string | {}, file?: string): MinimlModel {
     const model = typeof obj === "string" ? parseYAML(obj) as MinimlModel : obj as MinimlModel;
     if (!model.join)
         model.join = {};
+    if (!model.always_join)
+        model.always_join = [];
     if (!model.dimensions)
         model.dimensions = {};
     if (!model.measures)
@@ -125,4 +127,9 @@ function inferModelDialect(file: string): string {
 }
 
 function validateModel(model: MinimlModel): void {
+    if (model.always_join && model.always_join.length > 0) {
+        const undefined_joins = model.always_join.filter(key => !model.join[key]);
+        if (undefined_joins.length > 0)
+            throw new Error(`Undefined join reference in always_join: ${undefined_joins.join(', ')}. Available joins: ${Object.keys(model.join).join(', ')}`);
+    }
 }

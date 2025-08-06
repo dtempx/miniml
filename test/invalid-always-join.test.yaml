@@ -1,0 +1,23 @@
+description: Test model with invalid always_join reference
+
+dialect: bigquery
+from: acme.sales
+
+join:
+  customer_join: JOIN acme.customers USING (customer_id)
+  product_join: JOIN acme.products USING (product_id)
+
+always_join:
+  - product_join
+  - invalid_join_reference  # This should cause validation to fail
+
+dimensions:
+  date:
+    - The calendar date on which the sale occurred.
+    - DATE(sale_date)
+  sale_id: Unique identifier for each sale transaction.
+
+measures:
+  count:
+    - The count of records for the row.
+    - COUNT(*)

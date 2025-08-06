@@ -10,6 +10,10 @@ join:
   product_join: JOIN acme.products USING (product_id)
   store_join: JOIN acme.stores USING (store_id)
 
+always_join:
+  - product_join
+  - store_join
+
 dimensions:
   date:
     - The calendar date on which the sale occurred.

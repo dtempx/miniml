@@ -10,6 +10,7 @@ export interface MinimlModel {
     dialect: string;
     from: string;
     join: Record<string, string>;
+    always_join?: string[];
     where: string;
     date_field?: string;
     default_date_range?: string;

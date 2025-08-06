@@ -329,6 +329,62 @@ describe("SQL Injection Protection", () => {
             expect(sql).to.include("store_name = 'Main Street'");
             expect(sql).to.include("COUNT(*) > 5");
         });
+
+        it("should render joins in their YAML definition order, not reference order", () => {
+            // Create a test model with interdependent joins
+            const testModel = {
+                ...model,
+                always_join: [], // Clear always_join for this test
+                join: {
+                    first_join: "LEFT JOIN table_a AS a ON main.a_id = a.id",
+                    second_join: "LEFT JOIN table_b AS b ON a.b_id = b.id",
+                    third_join: "LEFT JOIN table_c AS c ON b.c_id = c.id"
+                },
+                dimensions: {
+                    ...model.dimensions,
+                    // Reference joins in reverse order to test ordering
+                    field_c: {
+                        key: "field_c",
+                        description: "Field from table C",
+                        sql: "c.name",
+                        join: "third_join"
+                    },
+                    field_b: {
+                        key: "field_b", 
+                        description: "Field from table B",
+                        sql: "b.name",
+                        join: "second_join"
+                    },
+                    field_a: {
+                        key: "field_a",
+                        description: "Field from table A", 
+                        sql: "a.name",
+                        join: "first_join"
+                    }
+                }
+            };
+
+            const sql = renderQuery(testModel, {
+                dimensions: ["field_c", "field_b", "field_a"], // Reference in reverse order
+                measures: ["total_amount"]
+            });
+            
+            expect(sql).to.be.a('string');
+            
+            // Verify joins appear in YAML definition order (first, second, third)
+            // not in reference order (third, second, first)
+            const firstJoinPos = sql.indexOf("LEFT JOIN table_a AS a");
+            const secondJoinPos = sql.indexOf("LEFT JOIN table_b AS b");  
+            const thirdJoinPos = sql.indexOf("LEFT JOIN table_c AS c");
+            
+            expect(firstJoinPos).to.be.greaterThan(-1);
+            expect(secondJoinPos).to.be.greaterThan(-1);
+            expect(thirdJoinPos).to.be.greaterThan(-1);
+            
+            // Verify order: first < second < third
+            expect(firstJoinPos).to.be.lessThan(secondJoinPos);
+            expect(secondJoinPos).to.be.lessThan(thirdJoinPos);
+        });
     });
 
     describe("Edge Cases", () => {
@@ -447,6 +503,147 @@ describe("SQL Injection Protection", () => {
                 expect(sql).to.include('SELECT');
                 expect(sql).to.include("BETWEEN '2024-01-01' AND '2024-01-31'");
             }
+        });
+    });
+
+    describe("Always Join Functionality", () => {
+        it("should include always_join joins even when not referenced by dimensions/measures", () => {
+            // Test with only dimensions that don't reference the always_join joins
+            const sql = renderQuery(model, {
+                dimensions: ["date", "sale_id"], // These don't use product_join or store_join
+                measures: ["count"]
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should include always_join joins even though dimensions/measures don't reference them
+            expect(sql).to.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.include('JOIN acme.stores USING (store_id)');
+        });
+
+        it("should include always_join joins with minimal query (no referenced joins)", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["sale_id"], // No join required
+                measures: ["count"]     // No join required
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should still include always_join joins
+            expect(sql).to.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.include('JOIN acme.stores USING (store_id)');
+            // Should not include customer_join (not in always_join)
+            expect(sql).to.not.include('JOIN acme.customers USING (customer_id)');
+        });
+
+        it("should include both always_join and referenced joins", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["customer_name"], // Requires customer_join
+                measures: ["total_amount"]
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should include always_join joins
+            expect(sql).to.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.include('JOIN acme.stores USING (store_id)');
+            // Should also include referenced join
+            expect(sql).to.include('JOIN acme.customers USING (customer_id)');
+        });
+
+        it("should maintain join order as defined in YAML with always_join", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["customer_name"], // References customer_join (defined first)
+                measures: ["total_amount"]
+            });
+            
+            expect(sql).to.be.a('string');
+            
+            // Check that joins appear in YAML definition order
+            const customerJoinPos = sql.indexOf("JOIN acme.customers USING (customer_id)");
+            const productJoinPos = sql.indexOf("JOIN acme.products USING (product_id)");
+            const storeJoinPos = sql.indexOf("JOIN acme.stores USING (store_id)");
+            
+            expect(customerJoinPos).to.be.greaterThan(-1);
+            expect(productJoinPos).to.be.greaterThan(-1);
+            expect(storeJoinPos).to.be.greaterThan(-1);
+            
+            // Verify order: customer < product < store (as defined in YAML)
+            expect(customerJoinPos).to.be.lessThan(productJoinPos);
+            expect(productJoinPos).to.be.lessThan(storeJoinPos);
+        });
+
+        it("should throw error for undefined always_join reference", () => {
+            const testModel = {
+                ...model,
+                always_join: ["undefined_join"]
+            };
+
+            expect(() => {
+                renderQuery(testModel, {
+                    dimensions: ["date"],
+                    measures: ["count"]
+                });
+            }).to.throw(SqlValidationError)
+              .with.property('message')
+              .that.includes('Undefined join reference: undefined_join');
+        });
+
+        it("should handle empty always_join array", () => {
+            const testModel = {
+                ...model,
+                always_join: []
+            };
+
+            const sql = renderQuery(testModel, {
+                dimensions: ["customer_name"],
+                measures: ["total_amount"]
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should only include the referenced customer_join
+            expect(sql).to.include('JOIN acme.customers USING (customer_id)');
+            expect(sql).to.not.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.not.include('JOIN acme.stores USING (store_id)');
+        });
+
+        it("should handle undefined always_join property", () => {
+            const testModel = {
+                ...model
+            };
+            delete (testModel as any).always_join;
+
+            const sql = renderQuery(testModel, {
+                dimensions: ["customer_name"],
+                measures: ["total_amount"]
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should only include the referenced customer_join
+            expect(sql).to.include('JOIN acme.customers USING (customer_id)');
+            expect(sql).to.not.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.not.include('JOIN acme.stores USING (store_id)');
+        });
+
+        it("should include always_join when referenced in WHERE clause", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["count"],
+                where: "product_name = 'Widget'" // References product_join
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should include both always_join joins (product_join is in always_join AND referenced)
+            expect(sql).to.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.include('JOIN acme.stores USING (store_id)');
+            expect(sql).to.include("product_name = 'Widget'");
+        });
+    });
+
+    describe("Always Join Model Loading Validation", () => {
+        it("should validate always_join references during model loading", () => {
+            expect(() => {
+                loadModelSync("test/invalid-always-join.test.yaml");
+            }).to.throw(Error)
+              .with.property('message')
+              .that.includes('Undefined join reference in always_join');
         });
     });
 });

@@ -49,15 +49,19 @@ export function renderQuery(model: MinimlModel, {
         );
 
     // Determine the unique set of joins based on the references to dimensions and measures
-    const join_keys = Array.from(new Set([
+    const referenced_joins = new Set([
         ...dimensions.map(key => model.dimensions[key].join!).filter(Boolean),
         ...measures.map(key => model.measures[key].join!).filter(Boolean),
         ...where_refs.map(key => model.dimensions[key].join!).filter(Boolean),
         ...having_refs.map(key => model.measures[key].join!).filter(Boolean)
-    ]));
+    ]);
+    
+    // Add always_join joins to the set of required joins
+    const always_joins = new Set(model.always_join || []);
+    const all_required_joins = new Set([...referenced_joins, ...always_joins]);
     
     // Validate that all referenced joins are defined
-    const undefined_joins = join_keys.filter(key => !model.join[key]);
+    const undefined_joins = Array.from(all_required_joins).filter(key => !model.join[key]);
     if (undefined_joins.length > 0)
         throw new SqlValidationError(
             `Undefined join reference: ${undefined_joins.join(', ')}`,
@@ -65,7 +69,10 @@ export function renderQuery(model: MinimlModel, {
             ['Add the missing join definitions to your model', 'Check for typos in join references']
         );
     
-    const joins = join_keys.map(key => model.join[key]);
+    // Get joins in the order they are defined in the YAML, filtering to only those that are required
+    const joins = Object.keys(model.join)
+        .filter(key => all_required_joins.has(key))
+        .map(key => model.join[key]);
 
     const dimension_fields = dimensions.map(key =>  key === model.date_field && date_granularity ? applyDateGranularity(date_granularity, key, model.dimensions[key].sql!, model.dialect) : model.dimensions[key].sql);
     const measure_fields = measures.map(key => model.measures[key].sql);

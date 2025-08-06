@@ -31,12 +31,18 @@ Create a YAML model file (`sales.yaml`) that describes your data structure:
 description: Sales fact table capturing transactional-level purchase data across products, stores, and customers.
 
 from: acme.sales
-default_date_range: last 7 days
 
 join:
   customer_join: JOIN acme.customers USING (customer_id)
   product_join: JOIN acme.products USING (product_id)
   store_join: JOIN acme.stores USING (store_id)
+
+always_join:
+  - product_join  # Always include product data for consistency
+
+date_field: date                    # Primary date field for filtering
+default_date_range: last 7 days     # Default time window when no dates specified
+include_today: false                # Exclude today's partial data
 
 dimensions:
   date:
@@ -105,7 +111,9 @@ SELECT
   DATE(sale_date) AS date,
   SUM(total_amount) AS total_amount
 FROM acme.sales
-WHERE DATE(sale_date) >= DATEADD(DAY, -7, DATE(sale_date))
+JOIN acme.products USING (product_id)
+WHERE DATE(sale_date) >= CURRENT_TIMESTAMP - INTERVAL 7 DAY
+  AND DATE(sale_date) < DATE_TRUNC(CURRENT_TIMESTAMP, DAY)
 GROUP BY ALL
 ```
 
@@ -193,11 +201,18 @@ A MiniML model is a YAML file with the following structure:
 description: Human-readable description of the model
 dialect: bigquery | snowflake
 from: schema.table_name
-date_field: primary_date_column
-where: base_filter_conditions
 
 join:
   join_name: JOIN clause definition
+
+always_join:
+  - join_name  # Joins to always include
+
+where: base_filter_conditions
+
+date_field: primary_date_column        # Auto-detected if not specified
+default_date_range: last 30 days       # Default time window
+include_today: false                   # Include/exclude current day
 
 dimensions:
   dimension_name: definition
@@ -254,19 +269,253 @@ measures:
 
 ### Joins
 
-Define reusable join clauses:
+Define reusable join clauses. **Joins are rendered in the order they are defined** under the `join` section, regardless of the order they are referenced by dimensions or measures.
 
 ```yaml
 join:
   customer_join: LEFT JOIN customers USING (customer_id)
   product_join: LEFT JOIN products USING (product_id)
+  store_join: LEFT JOIN stores USING (store_id)
+
+always_join:
+  - product_join  # Always include this join, regardless of field usage
 
 dimensions:
   customer_name:
     - Customer display name
     - customer_name
     - customer_join  # References the join above
+  store_name:
+    - Store location name  
+    - store_name
+    - store_join
 ```
+
+**Generated SQL join order:**
+```sql
+-- Joins appear in YAML definition order: customer_join, product_join, store_join
+-- Even if referenced in reverse order by dimensions/measures
+FROM base_table
+JOIN customers USING (customer_id)      -- First in YAML
+JOIN products USING (product_id)        -- Second in YAML  
+JOIN stores USING (store_id)            -- Third in YAML
+```
+
+This predictable ordering ensures consistent SQL generation and helps with query optimization and dependency management between joins.
+
+### Always Join
+
+The `always_join` property specifies joins that should **always** be included in generated SQL queries, regardless of whether any dimensions or measures explicitly reference them. This is useful for joins that provide essential context, filtering, or data integrity constraints.
+
+```yaml
+join:
+  customer_join: LEFT JOIN customers USING (customer_id)
+  product_join: LEFT JOIN products USING (product_id)
+  store_join: LEFT JOIN stores USING (store_id)
+
+always_join:
+  - product_join  # Always included for data integrity
+  - store_join    # Always included for consistent filtering
+
+dimensions:
+  date: Transaction date
+  customer_name:
+    - Customer name from customer table
+    - customer_name
+    - customer_join  # Only included when customer_name is used
+```
+
+**Example Query:**
+```typescript
+// This query only uses dimensions that don't require joins
+const sql = renderQuery(model, {
+    dimensions: ['date'],
+    measures: ['count']
+});
+```
+
+**Generated SQL:**
+```sql
+SELECT
+  DATE(sale_date) AS date,
+  COUNT(*) AS count
+FROM acme.sales
+JOIN products USING (product_id)  -- Always included
+JOIN stores USING (store_id)      -- Always included
+GROUP BY ALL
+```
+
+**Use Cases:**
+- **Data Quality**: Ensure referential integrity by always joining lookup tables
+- **Security**: Always include joins for row-level security filters
+- **Business Logic**: Maintain consistent business rules across all queries
+- **Performance**: Pre-join commonly used dimensions to optimize query plans
+
+**Best Practices:**
+- Use sparingly - only for joins that are truly always needed
+- Consider the performance impact of additional joins on large datasets
+- Document why specific joins are marked as `always_join` in your model
+
+### Date Field Configuration
+
+MiniML provides sophisticated date handling capabilities through three key properties: `date_field`, `default_date_range`, and `include_today`.
+
+#### Date Field (`date_field`)
+
+The `date_field` property specifies the primary date dimension used for automatic date filtering. If not explicitly defined, MiniML automatically detects it using these rules (in order):
+
+1. **Exact matches**: `"date"`, `"timestamp"`
+2. **Pattern matches**: Fields ending with `"date"`, `"time"`, `"_at"`, `"_on"`, `"_until"`, starting with `"date"`, or containing `"datetime"`
+
+```yaml
+# Explicit date field
+date_field: order_date
+
+dimensions:
+  order_date: The date when the order was placed
+  created_at: Record creation timestamp
+  
+# Auto-detected: MiniML will choose "order_date" (exact match)
+```
+
+```yaml
+# Auto-detection example
+dimensions:
+  transaction_date: Purchase date      # Will be auto-detected
+  customer_id: Customer identifier
+  
+# No explicit date_field needed - "transaction_date" will be chosen
+```
+
+#### Default Date Range (`default_date_range`)
+
+Automatically applies date filtering when no explicit `date_from`/`date_to` parameters are provided. Supports human-readable relative date expressions:
+
+```yaml
+default_date_range: last 30 days
+# Other examples:
+# default_date_range: last 7 days
+# default_date_range: last 12 months  
+# default_date_range: last 1 year
+# default_date_range: last 24 hours
+```
+
+**Supported time units**: `hour/hours`, `day/days`, `week/weeks`, `month/months`, `year/years`
+
+**Generated SQL Examples:**
+
+*BigQuery:*
+```sql
+WHERE order_date >= CURRENT_TIMESTAMP - INTERVAL 30 DAY
+```
+
+*Snowflake:*
+```sql  
+WHERE order_date >= CURRENT_TIMESTAMP - INTERVAL '30 DAY'
+```
+
+#### Include Today (`include_today`)
+
+Controls whether the current day is included in default date range filtering. **Defaults to `true`** if not specified.
+
+```yaml
+default_date_range: last 7 days
+include_today: false  # Exclude today from the range (default is true)
+```
+
+**With `include_today: true` (default):**
+```sql
+-- BigQuery
+WHERE order_date >= CURRENT_TIMESTAMP - INTERVAL 7 DAY
+
+-- Includes all of today's data
+```
+
+**With `include_today: false`:**
+```sql
+-- BigQuery  
+WHERE order_date >= CURRENT_TIMESTAMP - INTERVAL 7 DAY 
+  AND order_date < DATE_TRUNC(CURRENT_TIMESTAMP, DAY)
+  
+-- Excludes today's data (up to midnight)
+```
+
+#### Complete Date Configuration Example
+
+```yaml
+description: E-commerce orders with 30-day default window
+dialect: bigquery
+from: ecommerce.orders
+date_field: order_date           # Primary date field for filtering
+default_date_range: last 30 days # Auto-apply 30-day lookback  
+include_today: false             # Exclude today's partial data
+
+dimensions:
+  order_date:
+    - Order placement date
+    - DATE(order_date)
+  customer_id: Customer identifier
+
+measures:
+  revenue: 
+    - Total revenue
+    - SUM(amount)
+```
+
+**Query without explicit dates:**
+```typescript
+const sql = renderQuery(model, {
+    dimensions: ['order_date'], 
+    measures: ['revenue']
+});
+```
+
+**Generated SQL:**
+```sql
+SELECT
+  DATE(order_date) AS order_date,
+  SUM(amount) AS revenue
+FROM ecommerce.orders  
+WHERE order_date >= CURRENT_TIMESTAMP - INTERVAL 30 DAY
+  AND order_date < DATE_TRUNC(CURRENT_TIMESTAMP, DAY)
+GROUP BY ALL
+```
+
+**Query with explicit dates (overrides defaults):**
+```typescript
+const sql = renderQuery(model, {
+    dimensions: ['order_date'],
+    measures: ['revenue'], 
+    date_from: '2024-01-01',
+    date_to: '2024-01-31'
+});
+// Uses explicit dates instead of default_date_range
+```
+
+#### Date Granularity
+
+When using the primary `date_field` as a dimension, you can apply date truncation:
+
+```typescript
+const sql = renderQuery(model, {
+    dimensions: ['order_date'],
+    measures: ['revenue'],
+    date_granularity: 'week'  // Group by week
+});
+```
+
+**Generated SQL:**
+```sql
+-- BigQuery
+SELECT
+  DATE_TRUNC(DATE(order_date), WEEK) AS order_date,
+  SUM(amount) AS revenue
+FROM ecommerce.orders
+WHERE order_date >= CURRENT_TIMESTAMP - INTERVAL 30 DAY
+GROUP BY ALL
+```
+
+**Supported granularities**: `MINUTE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, `QUARTER`, `YEAR`
 
 ### SQL Dialect Detection
 
@@ -307,12 +556,14 @@ interface MinimlQueryOptions {
 
 ### Date Handling
 
-**Automatic date filtering:**
+MiniML provides powerful date filtering and processing capabilities. For comprehensive documentation on date configuration, see the [Date Field Configuration](#date-field-configuration) section.
+
+**Basic date filtering:**
 ```typescript
-// Last 30 days (default when date_field is defined)
+// Uses model's default_date_range if defined
 renderQuery(model, { measures: ['count'] });
 
-// Specific date range
+// Override with specific date range
 renderQuery(model, {
     measures: ['count'],
     date_from: '2024-01-01',
@@ -322,7 +573,7 @@ renderQuery(model, {
 
 **Date granularity:**
 ```typescript
-// Group by week
+// Group by week using the primary date_field
 renderQuery(model, {
     dimensions: ['date'],
     measures: ['count'],
@@ -383,8 +634,11 @@ interface MinimlModel {
     dialect: string;
     from: string;
     join: Record<string, string>;
+    always_join?: string[];           // Joins to always include
     where: string;
-    date_field: string;
+    date_field?: string;              // Primary date field (auto-detected)
+    default_date_range?: string;      // Default time window (e.g., "last 30 days")
+    include_today?: boolean;          // Include current day in default range
     dimensions: Record<string, MinimlDef>;
     measures: Record<string, MinimlDef>;
     info: string;  // Auto-generated documentation
