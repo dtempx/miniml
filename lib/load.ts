@@ -129,7 +129,7 @@ ${model.info || ""}`.trim();
         lines.push(`Use ${model.dialect.toUpperCase()} syntax for generating SQL filter expressions.`);
 
     if (lines.length > 0)
-        model.info += "\n**IMPORTANT NOTES**" + lines.map(line => "- " + line).join("\n") + "\n";
+        model.info += "\n\n**IMPORTANT NOTES**\n" + lines.map(line => "- " + line).join("\n") + "\n";
 }
 
 function inferModelDialect(file: string): string {
