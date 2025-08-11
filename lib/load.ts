@@ -6,12 +6,17 @@ export function createModel(obj: string | {}, file?: string): MinimlModel {
     const model = typeof obj === "string" ? parseYAML(obj) as MinimlModel : obj as MinimlModel;
     if (!model.join)
         model.join = {};
+
+    if (model.always_join as unknown === "all")
+        model.always_join = Object.keys(model.join);
     if (!model.always_join)
         model.always_join = [];
+
     if (!model.dimensions)
         model.dimensions = {};
     if (!model.measures)
         model.measures = {};
+
     if (!model.date_field)
         model.date_field = defaultDateField(Object.keys(model.dimensions));
     if (model.date_field)

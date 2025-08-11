@@ -325,6 +325,12 @@ dimensions:
     - customer_join  # Only included when customer_name is used
 ```
 
+Alternatively, specify `all` to always include all joins.
+
+```yaml
+always_join: all
+```
+
 **Example Query:**
 ```typescript
 // This query only uses dimensions that don't require joins
@@ -563,12 +569,16 @@ MiniML provides powerful date filtering and processing capabilities. For compreh
 // Uses model's default_date_range if defined
 renderQuery(model, { measures: ['count'] });
 
+
 // Override with specific date range
 renderQuery(model, {
     measures: ['count'],
     date_from: '2024-01-01',
     date_to: '2024-01-31'
 });
+
+// Specify a null for date_from to bypass the default_date_range
+renderQuery(model, { measures: ['count'], date_from: null });
 ```
 
 **Date granularity:**

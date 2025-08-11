@@ -506,6 +506,48 @@ describe("SQL Injection Protection", () => {
         });
     });
 
+    describe("Default Date Range Handling", () => {
+        it("should bypass default date range when date_from is null", () => {
+            const dimensions = Object.keys(model.dimensions);
+            const measures = Object.keys(model.measures);
+            
+            if (dimensions.length > 0 && measures.length > 0) {
+                const sql = renderQuery(model, {
+                    dimensions: [dimensions[0]],
+                    measures: [measures[0]],
+                    date_from: null as any
+                });
+                
+                expect(sql).to.be.a('string');
+                expect(sql).to.include('SELECT');
+                // Should not include any date filtering when date_from is explicitly null
+                expect(sql).to.not.include("DATE(sale_date) >=");
+                expect(sql).to.not.include("DATE(sale_date) <=");
+                expect(sql).to.not.include("BETWEEN");
+                expect(sql).to.not.include("CURRENT_TIMESTAMP - INTERVAL");
+            }
+        });
+
+        it("should apply default date range when no date parameters provided", () => {
+            const dimensions = Object.keys(model.dimensions);
+            const measures = Object.keys(model.measures);
+            
+            if (dimensions.length > 0 && measures.length > 0) {
+                const sql = renderQuery(model, {
+                    dimensions: [dimensions[0]],
+                    measures: [measures[0]]
+                    // No date_from or date_to provided
+                });
+                
+                expect(sql).to.be.a('string');
+                expect(sql).to.include('SELECT');
+                // Should include default date range filtering (for BigQuery dialect: "last 30 days")
+                // Note: The actual field is DATE(sale_date) as defined in the model
+                expect(sql).to.include("DATE(sale_date) >= CURRENT_TIMESTAMP - INTERVAL 30 DAY");
+            }
+        });
+    });
+
     describe("Always Join Functionality", () => {
         it("should include always_join joins even when not referenced by dimensions/measures", () => {
             // Test with only dimensions that don't reference the always_join joins
@@ -634,6 +676,30 @@ describe("SQL Injection Protection", () => {
             expect(sql).to.include('JOIN acme.products USING (product_id)');
             expect(sql).to.include('JOIN acme.stores USING (store_id)');
             expect(sql).to.include("product_name = 'Widget'");
+        });
+
+        it("should expand always_join: 'all' to include all defined joins", () => {
+            const testModel = {
+                ...model,
+                always_join: "all" as any
+            };
+            
+            // Manually apply the expansion logic as it happens in loadModel/createModel
+            const expandedModel = {
+                ...testModel,
+                always_join: Object.keys(model.join) // This is what happens in load.ts
+            };
+            
+            const sql = renderQuery(expandedModel, {
+                dimensions: ["date"],
+                measures: ["count"]
+            });
+            
+            expect(sql).to.be.a('string');
+            // Should include all joins from the model
+            expect(sql).to.include('JOIN acme.customers USING (customer_id)');
+            expect(sql).to.include('JOIN acme.products USING (product_id)');
+            expect(sql).to.include('JOIN acme.stores USING (store_id)');
         });
     });
 

@@ -95,8 +95,8 @@ export function renderQuery(model: MinimlModel, {
             where_clause.push(`${model.date_field} >= '${date_from}'`);
         else if (date_to)
             where_clause.push(`${model.date_field} <= '${date_to}'`);
-        else if (model.default_date_range)
-            appendDefaultDateRange(where_clause, model);
+        else if (model.default_date_range && date_from !== null && date_from !== null)
+            appendDefaultDateRange(where_clause, model); // add a default date range, but only if null was not specified for date_from or date_to
     }
 
     if (where) {
