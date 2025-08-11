@@ -7,3 +7,4 @@ check that alias matches the key name (is this a problem?)
 add params to inputs
 allow formulas in dimensions like `CONCAT(first_name, ' ', last_name) AS person_name`
 also allow jinja expansion like `CONCAT(retailer_url, '{{product_path}}') AS page_url`
+tests to verify important notes are appended to info field

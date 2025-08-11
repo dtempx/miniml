@@ -116,10 +116,20 @@ ${model.info || ""}`.trim();
         dimensions: Object.keys(model.dimensions).map(key => ({ key, description: model.dimensions[key].description })),
         measures: Object.keys(model.measures).map(key => ({ key, description: model.measures[key].description }))
     });
+
     if (!model.dialect && file)
         model.dialect = inferModelDialect(file);
+
+    const lines = [];
+
+    if (model.default_date_range)
+        lines.push(`If \`date_from\` or \`date_to\` are not specified, then a date range of "${model.default_date_range}" will be applied by default. Specify \`date_to\` as \`null\` to bypass applying a default date range.`);
+
     if (model.dialect)
-        model.info += `\n\nUse ${model.dialect.toUpperCase()} syntax for generating SQL filter expressions.`;
+        lines.push(`Use ${model.dialect.toUpperCase()} syntax for generating SQL filter expressions.`);
+
+    if (lines.length > 0)
+        model.info += "\n**IMPORTANT NOTES**" + lines.map(line => "- " + line).join("\n") + "\n";
 }
 
 function inferModelDialect(file: string): string {
