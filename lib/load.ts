@@ -110,7 +110,7 @@ function expandModelInfo(model: MinimlModel, file: string | undefined): void {
 - \`{{ measure.key }}\` {{ measure.description }}
 {%- endfor %}
 
-${model.info || ""}`.trim();
+${model.info ? `## USAGE\n${model.info}` : ""}`.trim();
 
     model.info = renderJinjaTemplate(model.info, {
         dimensions: Object.keys(model.dimensions).map(key => ({ key, description: model.dimensions[key].description })),
@@ -123,13 +123,16 @@ ${model.info || ""}`.trim();
     const lines = [];
 
     if (model.default_date_range)
-        lines.push(`If \`date_from\` or \`date_to\` are not specified, then a date range of "${model.default_date_range}" will be applied by default. Specify \`date_to\` as \`null\` to bypass applying a default date range.`);
+        lines.push(...[
+            `If \`date_from\` or \`date_to\` are not specified, then a date range of "${model.default_date_range}" will be applied by default.`,
+            `Specify \`date_to\` as \`null\` to bypass applying a default date range.`
+        ]);
 
     if (model.dialect)
         lines.push(`Use ${model.dialect.toUpperCase()} syntax for generating SQL filter expressions.`);
 
     if (lines.length > 0)
-        model.info += "\n\n**IMPORTANT NOTES**\n" + lines.map(line => "- " + line).join("\n") + "\n";
+        model.info += "\n\n**IMPORTANT**\n" + lines.map(line => "- " + line).join("\n") + "\n";
 }
 
 function inferModelDialect(file: string): string {
