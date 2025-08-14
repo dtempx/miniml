@@ -547,10 +547,10 @@ The `renderQuery` function accepts these options:
 
 ```typescript
 interface MinimlQueryOptions {
-    dimensions?: string[];        // Fields to group by
-    measures?: string[];          // Aggregated fields to calculate
-    date_from?: string;          // Start date filter (YYYY-MM-DD)
-    date_to?: string;            // End date filter (YYYY-MM-DD)
+    dimensions?: string[];       // Fields to group by
+    measures?: string[];         // Aggregated fields to calculate
+    date_from?: string | null;   // Start date filter (YYYY-MM-DD)
+    date_to?: string | null;     // End date filter (YYYY-MM-DD)
     where?: string;              // Additional WHERE conditions
     having?: string;             // HAVING clause for aggregate filters
     order_by?: string[];         // Sort fields (prefix with - for DESC)

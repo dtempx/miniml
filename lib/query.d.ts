@@ -2,8 +2,8 @@ import { MinimlModel } from "./common.js";
 export interface MinimlQueryOptions {
     dimensions?: string[];
     measures?: string[];
-    date_from?: string;
-    date_to?: string;
+    date_from?: string | null;
+    date_to?: string | null;
     where?: string;
     having?: string;
     order_by?: string[];
