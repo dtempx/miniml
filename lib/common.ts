@@ -18,6 +18,8 @@ export interface MinimlModel {
     dimensions: Record<string, MinimlDef>;
     measures: Record<string, MinimlDef>;
     info: string;
+    tags: string[];
+    path?: string;
 }
 
 export interface ValidationResult {

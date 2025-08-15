@@ -219,6 +219,11 @@ dimensions:
 
 measures:
   measure_name: definition
+
+tags:
+  - public  # Tags that can be used for purposes such as access control
+
+info: Detailed usage instructions for the model
 ```
 
 ### Dimensions

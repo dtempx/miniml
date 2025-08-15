@@ -24,6 +24,9 @@ export function createModel(obj: string | {}, file?: string): MinimlModel {
     if (model.default_date_range)
         model.default_date_range = model.default_date_range.trim();
 
+    if (!model.tags)
+        model.tags = [];
+
     validateModel(model);
     expandDimensions(model.dimensions);
     expandMeasures(model.measures);
