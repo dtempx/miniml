@@ -9,6 +9,8 @@ Also generates metadata for each model suitable for use by AI to execute queries
 Designed to be a stand-alone and light-weight library, embeddable in any server or app without requiring additional data platforming.
 Supports BigQuery and Snowflake dialects.
 
+> MiniML is completely open-source and non-proprietary, imposing no service/account requirements or additional usage costs whatsoever. See [Alternatives](./documentation/alternatives.md) for a  feature comparison to other alternatives such as dbt MetricFlow, Snowflake Cortex, Cube, Looker/LookML, and Databricks.
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -19,6 +21,7 @@ Supports BigQuery and Snowflake dialects.
 - [API Reference](#api-reference)
 - [Examples](#examples)
 - [Supported SQL Dialects](#supported-sql-dialects)
+- [Alternatives](./documentation/alternatives.md)
 - [Contributing](#contributing)
 
 ## Quick Start
