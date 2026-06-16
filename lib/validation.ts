@@ -23,6 +23,8 @@ export class UnsafeConstructError extends SqlValidationError {}
 export class UnknownColumnError extends SqlValidationError {}
 export class ComplexityLimitError extends SqlValidationError {}
 
+const MAX_EXPRESSION_LENGTH = 10000; // characters
+
 // Safe SQL functions per dialect
 const SAFE_FUNCTIONS: Record<string, string[]> = {
     bigquery: [
@@ -40,11 +42,11 @@ const SAFE_FUNCTIONS: Record<string, string[]> = {
 };
 
 // Safe operators and keywords
-const SAFE_OPERATORS = [
-    '=', '!=', '<>', '>', '<', '>=', '<=',
-    'AND', 'OR', 'NOT', 'IS', 'NULL', 'LIKE', 'ILIKE',
-    'IN', 'BETWEEN', 'EXISTS'
-];
+// const SAFE_OPERATORS = [
+//     '=', '!=', '<>', '>', '<', '>=', '<=',
+//     'AND', 'OR', 'NOT', 'IS', 'NULL', 'LIKE', 'ILIKE',
+//     'IN', 'BETWEEN', 'EXISTS'
+// ];
 
 // Dangerous constructs to block
 const DANGEROUS_CONSTRUCTS = [
@@ -180,9 +182,9 @@ function performBasicSafetyChecks(expression: string): ValidationResult {
     }
 
     // Check complexity limits
-    if (expression.length > 1000) {
+    if (expression.length > MAX_EXPRESSION_LENGTH) {
         result.ok = false;
-        result.errors.push('Expression too long. Maximum length is 1000 characters.');
+        result.errors.push(`SQL expression exceeds maximum length=${MAX_EXPRESSION_LENGTH}.`);
     }
 
     // Count parentheses depth

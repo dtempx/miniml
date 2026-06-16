@@ -308,6 +308,8 @@ JOIN stores USING (store_id)            -- Third in YAML
 
 This predictable ordering ensures consistent SQL generation and helps with query optimization and dependency management between joins.
 
+> ⚠️ A one-to-many join duplicates each base row before aggregation, so additive measures (`SUM`, `COUNT(*)`) over the base table will silently over-count. MiniML generates your SQL as-written and does not protect against this — see [fan-out](./documentation/fanout.md) for why it happens and how to stay correct.
+
 ### Always Join
 
 The `always_join` property specifies joins that should **always** be included in generated SQL queries, regardless of whether any dimensions or measures explicitly reference them. This is useful for joins that provide essential context, filtering, or data integrity constraints.

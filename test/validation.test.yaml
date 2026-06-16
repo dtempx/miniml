@@ -34,6 +34,8 @@ dimensions:
     - Display name or label of the store location.
     - store_name
     - store_join
+  tags:
+    - Array of tags associated with the product.
 
 measures:
   total_amount:
