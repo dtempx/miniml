@@ -32,7 +32,18 @@ export function renderQuery(model: MinimlModel, {
     const having_refs = extractFieldReferences(having, model);
 
     validateQueryInfo(model, dimensions, measures, where_refs, having_refs, order_by);
-    
+
+    // An order_by key must be part of the SELECT list to be groupable and
+    // referenceable; ordering by an unselected column is invalid under GROUP BY
+    // and unresolvable otherwise. Auto-include it (matches time-series intent).
+    for (const raw of order_by) {
+        const key = raw.startsWith("-") ? raw.slice(1) : raw;
+        if (model.dimensions[key]) {
+            if (!dimensions.includes(key)) dimensions = [...dimensions, key];
+        } else if (model.measures[key] && !measures.includes(key))
+            measures = [...measures, key];
+    }
+
     // Validate date inputs to prevent SQL injection
     if (date_from && !validateDateInput(date_from))
         throw new SqlValidationError(
@@ -74,7 +85,12 @@ export function renderQuery(model: MinimlModel, {
         .filter(key => all_required_joins.has(key))
         .map(key => model.join[key]);
 
-    const dimension_fields = dimensions.map(key =>  key === model.date_field && date_granularity ? applyDateGranularity(date_granularity, key, model.dimensions[key].sql!, model.dialect) : model.dimensions[key].sql);
+    const dimension_fields = dimensions.map(key => {
+        if (key === model.date_field && date_granularity)
+            return applyDateGranularity(date_granularity, key, model.dimensions[key].sql!, model.dialect);
+        const sql = model.dimensions[key].sql!;
+        return sql !== key && !/\sAS\s/i.test(sql) ? `${sql} AS ${key}` : sql;
+    });
     const measure_fields = measures.map(key => model.measures[key].sql);
     const group_by = dimensions.length > 0 && measures.length > 0;
     const query = [

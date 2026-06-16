@@ -731,3 +731,96 @@ describe("SQL Injection Protection", () => {
         });
     });
 });
+
+describe("Order By Auto-Selection", () => {
+    let model: MinimlModel;
+
+    before(() =>
+        model = loadModelSync("test/validation.test.yaml"));
+
+    it("should auto-add an order_by dimension that is not already selected", () => {
+        // Regression: ordering by an unselected column under GROUP BY produced an
+        // opaque warehouse error (e.g. "[T.DATE] is not a valid order by expression").
+        const sql = renderQuery(model, {
+            dimensions: ["customer_name"],
+            measures: ["total_amount"],
+            order_by: ["date"]
+        });
+
+        // date is now part of the SELECT (and therefore GROUP BY ALL) and ordered by.
+        expect(sql).to.include("DATE(sale_date) AS date");
+        expect(sql).to.include("GROUP BY ALL");
+        expect(sql).to.match(/ORDER BY date\b/);
+    });
+
+    it("should auto-add an order_by dimension with a descending prefix", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["customer_name"],
+            measures: ["total_amount"],
+            order_by: ["-date"]
+        });
+
+        expect(sql).to.include("DATE(sale_date) AS date");
+        expect(sql).to.include("ORDER BY date DESC");
+    });
+
+    it("should auto-add an order_by measure that is not already selected", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["customer_name"],
+            measures: ["count"],
+            order_by: ["-total_amount"]
+        });
+
+        expect(sql).to.include("SUM(total_amount) AS total_amount");
+        expect(sql).to.include("ORDER BY total_amount DESC");
+    });
+
+    it("should alias an expression dimension so order_by resolves by alias", () => {
+        // gong_calls-style regression: the date dimension is an unaliased
+        // expression, so without aliasing "ORDER BY date" had nothing to bind to.
+        const sql = renderQuery(model, {
+            dimensions: ["sale_id"],
+            order_by: ["date"]
+        });
+
+        expect(sql).to.include("DATE(sale_date) AS date");
+        expect(sql).to.match(/ORDER BY date\b/);
+    });
+
+    it("should not duplicate a column already present in the SELECT list", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["date"],
+            measures: ["total_amount"],
+            order_by: ["date"]
+        });
+
+        const occurrences = sql.split("DATE(sale_date) AS date").length - 1;
+        expect(occurrences).to.equal(1);
+    });
+
+    it("should not alias a bare dimension whose SQL equals its key", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["customer_name"],
+            measures: ["count"],
+            order_by: ["sale_id"]
+        });
+
+        expect(sql).to.include("sale_id");
+        expect(sql).to.not.include("sale_id AS sale_id");
+    });
+
+    it("should auto-add the date dimension alongside date_granularity", () => {
+        // Mirrors the production failure: date_granularity set + order_by date,
+        // but date omitted from dimensions.
+        const sql = renderQuery(model, {
+            dimensions: ["customer_name"],
+            measures: ["total_amount"],
+            order_by: ["date"],
+            date_granularity: "month"
+        });
+
+        expect(sql).to.include("DATE_TRUNC(DATE(sale_date), MONTH) AS date");
+        expect(sql).to.include("GROUP BY ALL");
+        expect(sql).to.match(/ORDER BY date\b/);
+    });
+});
