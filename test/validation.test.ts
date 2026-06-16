@@ -4,6 +4,7 @@ import { renderQuery } from "../lib/query.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "../lib/validation.js";
 import { SqlValidationError } from "../lib/common.js";
 import { MinimlModel } from "../lib/common.js";
+import { normalizeQuotesForBigQuery } from "../lib/dialect.js";
 
 describe("SQL Injection Protection", () => {
     let model: MinimlModel;
@@ -822,5 +823,55 @@ describe("Order By Auto-Selection", () => {
         expect(sql).to.include("DATE_TRUNC(DATE(sale_date), MONTH) AS date");
         expect(sql).to.include("GROUP BY ALL");
         expect(sql).to.match(/ORDER BY date\b/);
+    });
+});
+
+describe("BigQuery Quote Normalization", () => {
+    it("converts doubled single quotes to backslash escaping", () => {
+        expect(normalizeQuotesForBigQuery("name IN ('Home Depot', 'Lowe''s')"))
+            .to.equal("name IN ('Home Depot', 'Lowe\\'s')");
+    });
+
+    it("preserves an existing backslash escape (idempotent)", () => {
+        expect(normalizeQuotesForBigQuery("name = 'Lowe\\'s'"))
+            .to.equal("name = 'Lowe\\'s'");
+    });
+
+    it("does not treat a single quote inside a double-quoted string as a delimiter", () => {
+        expect(normalizeQuotesForBigQuery("note = \"it's fine\" AND x = 'a''b'"))
+            .to.equal("note = \"it's fine\" AND x = 'a\\'b'");
+    });
+
+    it("returns empty / undefined input unchanged", () => {
+        expect(normalizeQuotesForBigQuery(undefined)).to.equal(undefined);
+        expect(normalizeQuotesForBigQuery("")).to.equal("");
+    });
+});
+
+describe("BigQuery Quote Normalization (renderQuery)", () => {
+    let model: MinimlModel;
+
+    before(() =>
+        model = loadModelSync("test/validation.test.yaml")); // bigquery dialect
+
+    it("rewrites doubled quotes in a WHERE clause for BigQuery", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["date"],
+            measures: ["count"],
+            where: "customer_name IN ('Lowe''s', 'Menards')"
+        });
+
+        expect(sql).to.include("'Lowe\\'s'");
+        expect(sql).to.not.include("Lowe''s");
+    });
+
+    it("leaves doubled quotes untouched for Snowflake", () => {
+        const sql = renderQuery({ ...model, dialect: "snowflake" }, {
+            dimensions: ["date"],
+            measures: ["count"],
+            where: "customer_name IN ('Lowe''s', 'Menards')"
+        });
+
+        expect(sql).to.include("Lowe''s");
     });
 });

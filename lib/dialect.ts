@@ -47,6 +47,40 @@ export function constructTodayAtMidnightExpression(dialect: string): string {
         throw new Error(`Invalid dialect "${dialect}"`);
 }
 
+// BigQuery does not support SQL-standard doubled-quote escaping ('') inside
+// string literals — it parses 'a''b' as two adjacent literals and errors with
+// "concatenated string literals must be separated by whitespace". Convert
+// doubled single quotes within single-quoted strings to BigQuery's backslash
+// escaping (\') so agent-generated WHERE/HAVING clauses just work.
+export function normalizeQuotesForBigQuery(expression?: string): string | undefined {
+    if (!expression)
+        return expression;
+    let result = "";
+    let inSingle = false, inDouble = false;
+    for (let i = 0; i < expression.length; i++) {
+        const ch = expression[i];
+        if (inSingle) {
+            if (ch === "\\") {                                  // keep existing \x escape
+                result += ch + (expression[i + 1] ?? ""); i++;
+            } else if (ch === "'" && expression[i + 1] === "'") {
+                result += "\\'"; i++;                           // '' -> \'
+            } else {
+                result += ch;
+                if (ch === "'") inSingle = false;              // closing quote
+            }
+        } else if (inDouble) {                                  // pass through "..." untouched
+            result += ch;
+            if (ch === "\\") { result += expression[i + 1] ?? ""; i++; }
+            else if (ch === '"') inDouble = false;
+        } else {
+            result += ch;
+            if (ch === "'") inSingle = true;
+            else if (ch === '"') inDouble = true;
+        }
+    }
+    return result;
+}
+
 function parseDatePart(text: string): string {
     if (/^days?$/i.test(text))
         return "DAY";

@@ -1,7 +1,7 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
 import { extractFieldReferences } from "./parse.js";
-import { constructDateRangeExpression, constructDateTruncExpression } from "./dialect.js"
+import { constructDateRangeExpression, constructDateTruncExpression, normalizeQuotesForBigQuery } from "./dialect.js"
 
 export interface MinimlQueryOptions {
     dimensions?: string[];
@@ -28,6 +28,11 @@ export function renderQuery(model: MinimlModel, {
     distinct,
     date_granularity
 }: MinimlQueryOptions): string {
+    if (model.dialect === "bigquery") {
+        where = normalizeQuotesForBigQuery(where);
+        having = normalizeQuotesForBigQuery(having);
+    }
+
     const where_refs = extractFieldReferences(where, model);
     const having_refs = extractFieldReferences(having, model);
 
