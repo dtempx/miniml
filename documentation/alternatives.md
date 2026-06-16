@@ -17,9 +17,9 @@ The short version: **MiniML is the only completely non-proprietary, dependency-f
 
 A useful way to categorize these tools is by **what you hand the semantic layer** and **what comes back**:
 
-### Headless semantic layers — *you pass metadata, you get SQL/data*
+### Headless semantic layers — *metadata in,  generated SQL out*
 
-A headless semantic layer is "headless" because it has no UI of its own. Your application (or a BI tool, notebook, or AI agent) passes a **structured request built from the model's metadata** — "give me these dimensions and these measures, filtered this way" — and the layer deterministically compiles that request into SQL and returns the query (or the results). The model metadata is the contract; the output is reproducible and auditable.
+A headless semantic layer is "headless" because it has no embedded AI/LLM intelligence of its own. Instead, it **exposes the model's metadata** to an external agent which is responsible for arranging that metadata into a **structured request** — "give me these dimensions and these measures, filtered this way" — and submits it back to the layer, which then deterministically compiles the specified metadata into SQL and returns the query (or the results). The metadata is the contract; the caller does the choosing, and the output is reproducible and auditable.
 
 - **MiniML** is headless: you select dimensions/measures (the metadata) and it returns SQL. Nothing more, nothing less.
 - **dbt Semantic Layer (MetricFlow)** is headless: applications query defined metrics/dimensions through its API.
@@ -28,7 +28,7 @@ A headless semantic layer is "headless" because it has no UI of its own. Your ap
 
 The defining trait: **the request is metadata, and the translation to SQL is deterministic.** Given the same selection, you get the same SQL every time.
 
-### Agentic semantic models — *you pass natural language, an LLM picks the SQL*
+### Agentic semantic models — *you pass natural language in and an embedded Agent/LLM generates the SQL, runs it, and returns data out*
 
 An agentic semantic model is designed to sit behind a large language model. Instead of a structured selection of fields, you pass a **natural-language question** ("what was revenue by region last quarter?"). The semantic model here functions as *grounding* — it tells the LLM what tables, columns, metrics, and business terms exist, often with extra natural-language descriptions, synonyms, and verified-query examples — and the **model/agent decides** which fields to use and emits the SQL.
 
