@@ -1,6 +1,8 @@
-- [ ] If at least one dimension or measure is not specified, then render as SELECT *
+- [ ] date-granularity not applied as exoected if date-field is specified as "date" when date_field is something else (see tmp/date-granularity-problem.md)
 
-- [ ] When date_from and date_to are the same no rows are returned which is a common scenario
+- [ ] If at least one dimension or measure is not specified, then render as `SELECT *`
+
+- [ ] When `date_from` and `date_to` are the same no rows are returned which is a common scenario
 
 - [ ] Category level for models for 3-stage breakdowns
 
