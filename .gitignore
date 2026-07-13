@@ -9,3 +9,5 @@ node_modules
 Thumbs.db
 tmp
 plans
+.eval/
+.plan/
