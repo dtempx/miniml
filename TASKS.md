@@ -1,9 +1,5 @@
 - [ ] date-granularity not applied as exoected if date-field is specified as "date" when date_field is something else (see tmp/date-granularity-problem.md)
 
-- [ ] If at least one dimension or measure is not specified, then render as `SELECT *`
-
-- [ ] When `date_from` and `date_to` are the same no rows are returned which is a common scenario
-
 - [ ] Category level for models for 3-stage breakdowns
 
 - [ ] Implement tags scheme that limits metadata rendering and model access
@@ -27,7 +23,8 @@
 - [ ] Consider a new feature to join between models
 
 
-
+- [x] If at least one dimension or measure is not specified, then render as `SELECT *`
+- [x] When `date_from` and `date_to` are the same no rows are returned which is a common scenario
 - [x] Add MAX_EXPRESSION_LENGTH 10X
 - [x] Support function calls in where clause like ARRAY_CONTAINS('At Risk'::VARIANT, trackers) = TRUE
 - [x] refactor expandWhereReferences to use AST instead of regexp's

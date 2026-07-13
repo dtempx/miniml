@@ -28,6 +28,16 @@ export function constructDateTruncExpression(dialect: string, date_expr: string,
         throw new Error(`Invalid dialect "${dialect}"`);
 }
 
+export function constructDateAddExpression(dialect: string, expression: string, num: number, date_part: string): string {
+    date_part = parseDatePart(date_part);
+    if (dialect === "bigquery")
+        return `DATE_ADD(${expression}, INTERVAL ${num} ${date_part})`;
+    else if (dialect === "snowflake")
+        return `DATEADD(${date_part}, ${num}, ${expression})`;
+    else
+        throw new Error(`Invalid dialect "${dialect}"`);
+}
+
 export function constructDateSubExpression(dialect: string, date_field: string, num: number, date_part: string): string {
     date_part = parseDatePart(date_part);
     if (dialect === "bigquery")

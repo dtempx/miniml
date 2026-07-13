@@ -1,7 +1,7 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
 import { extractFieldReferences } from "./parse.js";
-import { constructDateRangeExpression, constructDateTruncExpression, normalizeQuotesForBigQuery } from "./dialect.js"
+import { constructDateRangeExpression, constructDateTruncExpression, constructDateAddExpression, normalizeQuotesForBigQuery } from "./dialect.js"
 
 export interface MinimlQueryOptions {
     dimensions?: string[];
@@ -98,24 +98,34 @@ export function renderQuery(model: MinimlModel, {
     });
     const measure_fields = measures.map(key => model.measures[key].sql);
     const group_by = dimensions.length > 0 && measures.length > 0;
+    const select_list = [...dimension_fields, ...measure_fields];
     const query = [
-        distinct && !group_by ? "SELECT DISTINCT" : "SELECT",
-        [
-            ...dimension_fields,
-            ...measure_fields
-        ].map(text => `  ${text}`).join(",\n"),
+        // When no dimension or measure is specified there is nothing to project,
+        // so fall back to SELECT * rather than emitting an empty select list.
+        select_list.length === 0
+            ? "SELECT *"
+            : (distinct && !group_by ? "SELECT DISTINCT\n" : "SELECT\n") + select_list.map(text => `  ${text}`).join(",\n"),
         `FROM ${model.from}`,
         ...joins
     ];
 
     const where_clause: string[] = [];
     if (model.date_field) {
-        if (date_from && date_to)
-            where_clause.push(`${model.date_field} BETWEEN '${date_from}' AND '${date_to}'`);
-        else if (date_from)
+        // Use a half-open range [date_from, date_to + 1 day) rather than
+        // BETWEEN 'date_from' AND 'date_to'. On a TIMESTAMP column the inclusive
+        // upper bound only matches midnight of date_to, so any single-day range
+        // (date_from === date_to) returns no rows. Adding a day and using an
+        // exclusive upper bound captures the whole date_to day for both DATE and
+        // TIMESTAMP columns.
+        if (date_from && date_to) {
+            const upper = constructDateAddExpression(model.dialect, `'${date_to}'`, 1, "day");
+            where_clause.push(`${model.date_field} >= '${date_from}' AND ${model.date_field} < ${upper}`);
+        } else if (date_from)
             where_clause.push(`${model.date_field} >= '${date_from}'`);
-        else if (date_to)
-            where_clause.push(`${model.date_field} <= '${date_to}'`);
+        else if (date_to) {
+            const upper = constructDateAddExpression(model.dialect, `'${date_to}'`, 1, "day");
+            where_clause.push(`${model.date_field} < ${upper}`);
+        }
         else if (model.default_date_range && date_from !== null && date_from !== null)
             appendDefaultDateRange(where_clause, model); // add a default date range, but only if null was not specified for date_from or date_to
     }

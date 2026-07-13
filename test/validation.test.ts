@@ -520,7 +520,7 @@ describe("SQL Injection Protection", () => {
                 
                 expect(sql).to.be.a('string');
                 expect(sql).to.include('SELECT');
-                expect(sql).to.include("BETWEEN '2024-01-01' AND '2024-01-31'");
+                expect(sql).to.include("DATE(sale_date) >= '2024-01-01' AND DATE(sale_date) < DATE_ADD('2024-01-31', INTERVAL 1 DAY)");
             }
         });
     });
@@ -564,6 +564,49 @@ describe("SQL Injection Protection", () => {
                 // Note: The actual field is DATE(sale_date) as defined in the model
                 expect(sql).to.include("DATE(sale_date) >= CURRENT_TIMESTAMP - INTERVAL 30 DAY");
             }
+        });
+    });
+
+    describe("Empty Select List", () => {
+        it("should render SELECT * when neither dimensions nor measures are specified", () => {
+            const sql = renderQuery(model, { date_from: null as any });
+            expect(sql).to.be.a('string');
+            expect(sql).to.match(/^SELECT \*\nFROM /);
+        });
+
+        it("should still project fields when at least one dimension is specified", () => {
+            const sql = renderQuery(model, { dimensions: ["sale_id"], date_from: null as any });
+            expect(sql).to.not.include("SELECT *");
+            expect(sql).to.include("SELECT\n  sale_id");
+        });
+    });
+
+    describe("Same-Day Date Range", () => {
+        it("should capture the full day when date_from equals date_to (BigQuery)", () => {
+            const sql = renderQuery({ ...model, dialect: "bigquery" }, {
+                dimensions: ["sale_id"],
+                date_from: "2024-01-15",
+                date_to: "2024-01-15"
+            });
+            expect(sql).to.include("DATE(sale_date) >= '2024-01-15' AND DATE(sale_date) < DATE_ADD('2024-01-15', INTERVAL 1 DAY)");
+            expect(sql).to.not.include("BETWEEN");
+        });
+
+        it("should capture the full day when date_from equals date_to (Snowflake)", () => {
+            const sql = renderQuery({ ...model, dialect: "snowflake" }, {
+                dimensions: ["sale_id"],
+                date_from: "2024-01-15",
+                date_to: "2024-01-15"
+            });
+            expect(sql).to.include("DATE(sale_date) >= '2024-01-15' AND DATE(sale_date) < DATEADD(DAY, 1, '2024-01-15')");
+        });
+
+        it("should use an exclusive upper bound when only date_to is specified", () => {
+            const sql = renderQuery({ ...model, dialect: "bigquery" }, {
+                dimensions: ["sale_id"],
+                date_to: "2024-01-31"
+            });
+            expect(sql).to.include("DATE(sale_date) < DATE_ADD('2024-01-31', INTERVAL 1 DAY)");
         });
     });
 
