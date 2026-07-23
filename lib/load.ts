@@ -21,6 +21,11 @@ export function createModel(obj: string | {}, file?: string): MinimlModel {
         model.date_field = defaultDateField(Object.keys(model.dimensions));
     if (model.date_field)
         model.date_field = model.date_field.trim();
+    if (model.date_type) {
+        model.date_type = model.date_type.trim().toUpperCase();
+        if (model.date_type !== "DATE" && model.date_type !== "TIMESTAMP")
+            throw new Error(`Invalid date_type "${model.date_type}" (expected "DATE" or "TIMESTAMP")`);
+    }
     if (model.default_date_range)
         model.default_date_range = model.default_date_range.trim();
 

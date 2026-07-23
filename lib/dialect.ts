@@ -1,17 +1,20 @@
-export function constructCurrentTimeOffsetExpression(dialect: string, date_offset: number, date_part: string): string {
+export function constructCurrentTimeOffsetExpression(dialect: string, date_offset: number, date_part: string, is_date?: boolean): string {
     date_part = parseDatePart(date_part);
+    // For DATE-typed fields compare against CURRENT_DATE so both sides are DATE;
+    // comparing a DATE column against CURRENT_TIMESTAMP raises a type-mismatch error.
+    const now = is_date ? "CURRENT_DATE" : "CURRENT_TIMESTAMP";
     if (dialect === "bigquery")
-        return `CURRENT_TIMESTAMP - INTERVAL ${date_offset} ${date_part}`;
+        return `${now} - INTERVAL ${date_offset} ${date_part}`;
     else if (dialect == "snowflake")
-        return `CURRENT_TIMESTAMP - INTERVAL '${date_offset} ${date_part}'`;
+        return `${now} - INTERVAL '${date_offset} ${date_part}'`;
     else
         throw new Error(`Invalid dialect "${dialect}"`);
 }
 
-export function constructDateRangeExpression(dialect: string, date_field: string, date_offset: number, date_part: string, include_today?: boolean): string {
-    let expression = `${date_field} >= ${constructCurrentTimeOffsetExpression(dialect, date_offset, date_part)}`;
+export function constructDateRangeExpression(dialect: string, date_field: string, date_offset: number, date_part: string, include_today?: boolean, is_date?: boolean): string {
+    let expression = `${date_field} >= ${constructCurrentTimeOffsetExpression(dialect, date_offset, date_part, is_date)}`;
     if (!include_today)
-        expression += ` AND ${date_field} < ${constructTodayAtMidnightExpression(dialect)}`;
+        expression += ` AND ${date_field} < ${constructTodayAtMidnightExpression(dialect, is_date)}`;
     return expression;
 }
 
@@ -48,7 +51,11 @@ export function constructDateSubExpression(dialect: string, date_field: string, 
         throw new Error(`Invalid dialect "${dialect}"`);
 }
 
-export function constructTodayAtMidnightExpression(dialect: string): string {
+export function constructTodayAtMidnightExpression(dialect: string, is_date?: boolean): string {
+    // For a DATE-typed field, "today at midnight" is simply CURRENT_DATE (a DATE);
+    // truncating CURRENT_TIMESTAMP would yield a TIMESTAMP and mismatch the column.
+    if (is_date)
+        return `CURRENT_DATE`;
     if (dialect === "bigquery")
         return `DATE_TRUNC(CURRENT_TIMESTAMP, DAY)`;
     else if (dialect === "snowflake")

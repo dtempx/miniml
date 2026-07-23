@@ -1,7 +1,7 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
 import { extractFieldReferences } from "./parse.js";
-import { constructDateRangeExpression, constructDateTruncExpression, constructDateAddExpression, normalizeQuotesForBigQuery } from "./dialect.js"
+import { constructDateRangeExpression, constructDateTruncExpression, normalizeQuotesForBigQuery } from "./dialect.js"
 
 export interface MinimlQueryOptions {
     dimensions?: string[];
@@ -96,8 +96,12 @@ export function renderQuery(model: MinimlModel, {
         const sql = model.dimensions[key].sql!;
         return sql !== key && !/\sAS\s/i.test(sql) ? `${sql} AS ${key}` : sql;
     });
-    const measure_fields = measures.map(key => model.measures[key].sql);
-    const group_by = dimensions.length > 0 && measures.length > 0;
+    // Include any measure referenced in HAVING that was not explicitly selected,
+    // so its alias exists in the SELECT list for the HAVING clause to reference.
+    // (HAVING emits the alias rather than re-expanding the aggregate SQL — see below.)
+    const projected_measures = [...measures, ...having_refs.filter(key => !measures.includes(key))];
+    const measure_fields = projected_measures.map(key => model.measures[key].sql);
+    const group_by = dimensions.length > 0 && projected_measures.length > 0;
     const select_list = [...dimension_fields, ...measure_fields];
     const query = [
         // When no dimension or measure is specified there is nothing to project,
@@ -115,17 +119,25 @@ export function renderQuery(model: MinimlModel, {
         // BETWEEN 'date_from' AND 'date_to'. On a TIMESTAMP column the inclusive
         // upper bound only matches midnight of date_to, so any single-day range
         // (date_from === date_to) returns no rows. Adding a day and using an
-        // exclusive upper bound captures the whole date_to day for both DATE and
-        // TIMESTAMP columns.
-        if (date_from && date_to) {
-            const upper = constructDateAddExpression(model.dialect, `'${date_to}'`, 1, "day");
-            where_clause.push(`${model.date_field} >= '${date_from}' AND ${model.date_field} < ${upper}`);
-        } else if (date_from)
-            where_clause.push(`${model.date_field} >= '${date_from}'`);
-        else if (date_to) {
-            const upper = constructDateAddExpression(model.dialect, `'${date_to}'`, 1, "day");
-            where_clause.push(`${model.date_field} < ${upper}`);
-        }
+        // exclusive upper bound captures the whole date_to day.
+        //
+        // The upper bound is emitted as a bare next-day string literal (e.g.
+        // < '2026-06-27') rather than DATE_ADD('2026-06-26', INTERVAL 1 DAY).
+        // DATE_ADD forces a DATE result, which fails against a TIMESTAMP column
+        // ("No matching signature for operator <: TIMESTAMP, DATE"); a bare
+        // literal coerces to whichever type the column is, so this works for
+        // both DATE and TIMESTAMP date_fields with no per-model configuration.
+        // Strip any time component from the lower bound too: a DATE column cannot
+        // be compared against a datetime literal ("Could not cast literal
+        // '2026-06-21 00:00:00' to type DATE"), and for a TIMESTAMP column a
+        // date-only literal coerces to midnight — the intended day boundary.
+        const from = date_from ? date_from.slice(0, 10) : date_from;
+        if (from && date_to) {
+            where_clause.push(`${model.date_field} >= '${from}' AND ${model.date_field} < '${nextDayLiteral(date_to)}'`);
+        } else if (from)
+            where_clause.push(`${model.date_field} >= '${from}'`);
+        else if (date_to)
+            where_clause.push(`${model.date_field} < '${nextDayLiteral(date_to)}'`);
         else if (model.default_date_range && date_from !== null && date_from !== null)
             appendDefaultDateRange(where_clause, model); // add a default date range, but only if null was not specified for date_from or date_to
     }
@@ -161,7 +173,12 @@ export function renderQuery(model: MinimlModel, {
                 ['Use simple comparisons like "measure > value"', 'Reference only measures defined in your model']
             );
         }
-        query.push(`HAVING ${expandWhereReferences(having, model.measures)}`);
+        // Reference measure aliases directly rather than re-expanding their SQL.
+        // Re-expanding a ratio-of-aggregates measure (e.g. SAFE_DIVIDE(SUM(a), SUM(b)))
+        // into HAVING produces "aggregations of aggregations" errors; the measure keys
+        // already equal their SELECT-list aliases, which both BigQuery and Snowflake
+        // accept in HAVING. This mirrors how ORDER BY references aliases below.
+        query.push(`HAVING ${having}`);
     }
 
     if (order_by.length > 0)
@@ -173,16 +190,29 @@ export function renderQuery(model: MinimlModel, {
     return query.filter(Boolean).join("\n");
 }
 
+// Return the date one day after the given date literal, as a bare YYYY-MM-DD
+// string. Any time component on the input is dropped (a DATE column cannot be
+// compared against a datetime literal). Uses UTC arithmetic so the result is
+// independent of the host timezone. Input is already validated as
+// YYYY-MM-DD(' 'HH:MM:SS)? upstream (validateDateInput).
+function nextDayLiteral(date: string): string {
+    const [y, m, d] = date.slice(0, 10).split("-").map(Number);
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
+    return next.toISOString().slice(0, 10);
+}
+
 function appendDefaultDateRange(where_clause: string[], model: MinimlModel): void {
     if (!model.date_field || !model.default_date_range || !model.dialect)
         return;
 
     let result: RegExpMatchArray | null;
 
+    const is_date = model.date_type?.toUpperCase() === "DATE";
+
     // last 30 days, last 90 days, etc.
     result = model.default_date_range.match(/^last\s+(\d+)\s+(hours?|days?|weeks?|months?|years?|years)$/i);
     if (result)
-        where_clause.push(constructDateRangeExpression(model.dialect, model.date_field, parseInt(result[1]), result[2], model.include_today ?? true));
+        where_clause.push(constructDateRangeExpression(model.dialect, model.date_field, parseInt(result[1]), result[2], model.include_today ?? true, is_date));
 }
 
 function applyDateGranularity(date_granularity: string, key: string, date_expr: string, dialect: string): string {

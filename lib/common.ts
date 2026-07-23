@@ -13,6 +13,8 @@ export interface MinimlModel {
     always_join?: string[];
     where: string;
     date_field?: string;
+    date_type?: string; // "DATE" | "TIMESTAMP" (default). Controls whether date-range
+                        // filters compare against CURRENT_DATE or CURRENT_TIMESTAMP.
     default_date_range?: string;
     include_today?: boolean;
     dimensions: Record<string, MinimlDef>;

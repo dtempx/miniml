@@ -332,7 +332,7 @@ describe("SQL Injection Protection", () => {
             });
             
             expect(sql).to.be.a('string');
-            expect(sql).to.include("SUM(total_amount) > 1000");
+            expect(sql).to.include("HAVING total_amount > 1000");
         });
 
         it("should include multiple joins for fields referenced in both WHERE and HAVING clauses", () => {
@@ -342,11 +342,25 @@ describe("SQL Injection Protection", () => {
                 where: "store_name = 'Main Street'",
                 having: "count > 5"
             });
-            
+
             expect(sql).to.be.a('string');
             expect(sql).to.include('JOIN acme.stores USING (store_id)');
             expect(sql).to.include("store_name = 'Main Street'");
-            expect(sql).to.include("COUNT(*) > 5");
+            expect(sql).to.include("HAVING count > 5");
+        });
+
+        it("should project a measure referenced only in HAVING so its alias resolves", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"],
+                having: "count > 5"
+            });
+
+            expect(sql).to.be.a('string');
+            // count was not requested as a measure but is referenced in HAVING,
+            // so it must appear in the SELECT list for the alias to resolve.
+            expect(sql).to.include("COUNT(*) AS count");
+            expect(sql).to.include("HAVING count > 5");
         });
 
         it("should render joins in their YAML definition order, not reference order", () => {
@@ -520,7 +534,7 @@ describe("SQL Injection Protection", () => {
                 
                 expect(sql).to.be.a('string');
                 expect(sql).to.include('SELECT');
-                expect(sql).to.include("DATE(sale_date) >= '2024-01-01' AND DATE(sale_date) < DATE_ADD('2024-01-31', INTERVAL 1 DAY)");
+                expect(sql).to.include("DATE(sale_date) >= '2024-01-01' AND DATE(sale_date) < '2024-02-01'");
             }
         });
     });
@@ -565,6 +579,73 @@ describe("SQL Injection Protection", () => {
                 expect(sql).to.include("DATE(sale_date) >= CURRENT_TIMESTAMP - INTERVAL 30 DAY");
             }
         });
+
+        it("should compare against CURRENT_DATE for a DATE-typed field in the default range", () => {
+            const dateModel = { ...model, date_type: "DATE", include_today: true };
+            const sql = renderQuery(dateModel, {
+                dimensions: ["date"],
+                measures: ["total_amount"]
+            });
+            expect(sql).to.include("DATE(sale_date) >= CURRENT_DATE - INTERVAL 30 DAY");
+            expect(sql).to.not.include("CURRENT_TIMESTAMP");
+        });
+
+        it("should use CURRENT_DATE as the exclusive upper bound for a DATE field when include_today is false", () => {
+            // The test model has include_today: false, so an upper bound is emitted.
+            const dateModel = { ...model, date_type: "DATE" };
+            const sql = renderQuery(dateModel, {
+                dimensions: ["date"],
+                measures: ["total_amount"]
+            });
+            expect(sql).to.include("DATE(sale_date) >= CURRENT_DATE - INTERVAL 30 DAY");
+            expect(sql).to.include("DATE(sale_date) < CURRENT_DATE");
+            expect(sql).to.not.include("DATE_TRUNC(CURRENT_TIMESTAMP");
+        });
+
+        it("should emit a bare next-day literal upper bound (works for DATE and TIMESTAMP columns)", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"],
+                date_from: "2026-06-21",
+                date_to: "2026-07-21"
+            });
+            // Bare next-day string literal rather than DATE_ADD(...), which would
+            // force a DATE result and mismatch a TIMESTAMP column.
+            expect(sql).to.include("DATE(sale_date) >= '2026-06-21' AND DATE(sale_date) < '2026-07-22'");
+            expect(sql).to.not.include("DATE_ADD");
+        });
+
+        it("should strip time components from explicit date_from/date_to", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"],
+                date_from: "2026-06-21 00:00:00",
+                date_to: "2026-07-21 23:59:59"
+            });
+            // A DATE column cannot be compared against a datetime literal; the
+            // time portion is dropped and the upper bound advances one day.
+            expect(sql).to.include("DATE(sale_date) >= '2026-06-21' AND DATE(sale_date) < '2026-07-22'");
+            expect(sql).to.not.include("00:00:00");
+            expect(sql).to.not.include("23:59:59");
+        });
+
+        it("should advance the upper bound across a month boundary", () => {
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"],
+                date_to: "2026-01-31"
+            });
+            expect(sql).to.include("DATE(sale_date) < '2026-02-01'");
+        });
+
+        it("should leave TIMESTAMP-typed default range unchanged (CURRENT_TIMESTAMP)", () => {
+            // No date_type (defaults to TIMESTAMP semantics).
+            const sql = renderQuery(model, {
+                dimensions: ["date"],
+                measures: ["total_amount"]
+            });
+            expect(sql).to.include("DATE(sale_date) >= CURRENT_TIMESTAMP - INTERVAL 30 DAY");
+        });
     });
 
     describe("Empty Select List", () => {
@@ -588,7 +669,7 @@ describe("SQL Injection Protection", () => {
                 date_from: "2024-01-15",
                 date_to: "2024-01-15"
             });
-            expect(sql).to.include("DATE(sale_date) >= '2024-01-15' AND DATE(sale_date) < DATE_ADD('2024-01-15', INTERVAL 1 DAY)");
+            expect(sql).to.include("DATE(sale_date) >= '2024-01-15' AND DATE(sale_date) < '2024-01-16'");
             expect(sql).to.not.include("BETWEEN");
         });
 
@@ -598,7 +679,8 @@ describe("SQL Injection Protection", () => {
                 date_from: "2024-01-15",
                 date_to: "2024-01-15"
             });
-            expect(sql).to.include("DATE(sale_date) >= '2024-01-15' AND DATE(sale_date) < DATEADD(DAY, 1, '2024-01-15')");
+            // The upper bound is a dialect-independent bare literal (no DATEADD).
+            expect(sql).to.include("DATE(sale_date) >= '2024-01-15' AND DATE(sale_date) < '2024-01-16'");
         });
 
         it("should use an exclusive upper bound when only date_to is specified", () => {
@@ -606,7 +688,7 @@ describe("SQL Injection Protection", () => {
                 dimensions: ["sale_id"],
                 date_to: "2024-01-31"
             });
-            expect(sql).to.include("DATE(sale_date) < DATE_ADD('2024-01-31', INTERVAL 1 DAY)");
+            expect(sql).to.include("DATE(sale_date) < '2024-02-01'");
         });
     });
 
