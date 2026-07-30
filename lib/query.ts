@@ -49,6 +49,15 @@ export function renderQuery(model: MinimlModel, {
             measures = [...measures, key];
     }
 
+    // When neither dimensions nor measures are specified, project every dimension
+    // and measure defined by the model rather than emitting SELECT *. The model is
+    // the contract: SELECT * leaks raw table columns, ignores dimension SQL
+    // expressions and aliases, and pulls nothing from joins.
+    if (dimensions.length === 0 && measures.length === 0) {
+        dimensions = Object.keys(model.dimensions);
+        measures = Object.keys(model.measures);
+    }
+
     // Validate date inputs to prevent SQL injection
     if (date_from && !validateDateInput(date_from))
         throw new SqlValidationError(
@@ -103,12 +112,14 @@ export function renderQuery(model: MinimlModel, {
     const measure_fields = projected_measures.map(key => model.measures[key].sql);
     const group_by = dimensions.length > 0 && projected_measures.length > 0;
     const select_list = [...dimension_fields, ...measure_fields];
+    if (select_list.length === 0)
+        throw new SqlValidationError(
+            "Model defines no dimensions or measures to select",
+            ['Model defines no dimensions or measures to select'],
+            ['Add dimensions or measures to your model', 'Specify dimensions or measures in the query']
+        );
     const query = [
-        // When no dimension or measure is specified there is nothing to project,
-        // so fall back to SELECT * rather than emitting an empty select list.
-        select_list.length === 0
-            ? "SELECT *"
-            : (distinct && !group_by ? "SELECT DISTINCT\n" : "SELECT\n") + select_list.map(text => `  ${text}`).join(",\n"),
+        (distinct && !group_by ? "SELECT DISTINCT\n" : "SELECT\n") + select_list.map(text => `  ${text}`).join(",\n"),
         `FROM ${model.from}`,
         ...joins
     ];

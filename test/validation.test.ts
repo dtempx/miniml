@@ -649,10 +649,29 @@ describe("SQL Injection Protection", () => {
     });
 
     describe("Empty Select List", () => {
-        it("should render SELECT * when neither dimensions nor measures are specified", () => {
+        it("should project all dimensions and measures when neither is specified", () => {
             const sql = renderQuery(model, { date_from: null as any });
-            expect(sql).to.be.a('string');
-            expect(sql).to.match(/^SELECT \*\nFROM /);
+            expect(sql).to.not.include("SELECT *");
+            for (const key of Object.keys(model.dimensions))
+                expect(sql).to.include(key);
+            for (const key of Object.keys(model.measures))
+                expect(sql).to.include(key);
+            // Dimension SQL expressions and aliases are honored, not raw columns.
+            expect(sql).to.include("DATE(sale_date) AS date");
+            expect(sql).to.include("SUM(total_amount)");
+            // Both dimensions and measures are present, so the query aggregates.
+            expect(sql).to.include("GROUP BY ALL");
+        });
+
+        it("should include joins required by the defaulted dimensions", () => {
+            const sql = renderQuery(model, { date_from: null as any });
+            // customer_name belongs to customer_join, which is not an always_join.
+            expect(sql).to.include("JOIN acme.customers USING (customer_id)");
+        });
+
+        it("should throw when the model defines no dimensions or measures", () => {
+            const empty = { ...model, dimensions: {}, measures: {} };
+            expect(() => renderQuery(empty, { date_from: null as any })).to.throw(/no dimensions or measures/);
         });
 
         it("should still project fields when at least one dimension is specified", () => {
