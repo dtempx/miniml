@@ -24,7 +24,7 @@
 - [ ] Consider a new feature to join between models
 
 
-- [x] If at least one dimension or measure is not specified, then render as `SELECT *`
+- [x] If no dimensions or measures are specified, then generate a SELECT with all dimensions and measures
 - [x] When `date_from` and `date_to` are the same no rows are returned which is a common scenario
 - [x] Add MAX_EXPRESSION_LENGTH 10X
 - [x] Support function calls in where clause like ARRAY_CONTAINS('At Risk'::VARIANT, trackers) = TRUE
