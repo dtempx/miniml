@@ -122,6 +122,32 @@ export function validateHavingClause(having: string, model: MinimlModel): Valida
     return validateSqlExpression(having, model);
 }
 
+// Aggregates that may wrap a measure alias redundantly. COUNT is included, but
+// COUNT(*) and COUNT(DISTINCT x) are never stripped -- see stripRedundantAggregates.
+const STRIPPABLE_AGGREGATES = ['SUM', 'COUNT', 'AVG', 'MIN', 'MAX'];
+
+/**
+ * Removes an aggregate function wrapped directly around a measure alias in a
+ * HAVING clause. A measure key already resolves to its own aggregate SQL, so
+ * `SUM(total_click_count)` expands to SUM(SUM(click_count)) and the warehouse
+ * rejects it as a nested aggregate. Callers of the MCP server write this form
+ * frequently because it is what plain SQL requires.
+ *
+ * Only strips when the argument is a bare column that is a measure in the model.
+ * `SUM(raw_column)` over a non-measure, `COUNT(*)`, and `COUNT(DISTINCT x)` are
+ * all left untouched, since those carry meaning the alias does not.
+ */
+export function stripRedundantAggregates(having: string | undefined, model: MinimlModel): string | undefined {
+    if (!having?.trim())
+        return having;
+
+    const measures = new Set(Object.keys(model.measures));
+    const pattern = new RegExp(`\\b(${STRIPPABLE_AGGREGATES.join('|')})\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)`, 'gi');
+
+    return having.replace(pattern, (match, _func: string, column: string) =>
+        measures.has(column) ? column : match);
+}
+
 export function validateDateInput(date: string): boolean {
     if (!date || date.trim() === '') {
         return true; // Empty dates are allowed

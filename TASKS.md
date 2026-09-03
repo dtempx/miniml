@@ -40,3 +40,10 @@
 - [x] tests to verify important notes are appended to info field
 
 - [x] HAVING on a ratio-of-aggregates measure (e.g. `SAFE_DIVIDE(SUM(a), SUM(b))`) failed with "Aggregations of aggregations are not allowed" because HAVING re-expanded the measure SQL. Fixed by referencing the measure alias in HAVING instead (matching ORDER BY), and auto-projecting any HAVING-referenced measure that was not explicitly selected so its alias resolves.
+
+- [x] automatically unwrap aggregate functions if specified in a HAVING
+
+    - HAVING with an aggregate wrapped around a measure alias (e.g. `SUM(total_click_count) > 500`) failed with "Aggregate functions cannot be nested" because the alias already resolves to its own aggregate SQL, yielding SUM(SUM(click_count)). Callers write this form frequently since it is what plain SQL requires, and the tool-schema warning against it was not enough on its own. FIXED: added `stripRedundantAggregates` [validation.ts], called from renderQuery [query.ts] before reference extraction and validation — ordering matters, since the wrapper would otherwise trip the safe-function whitelist in validateAstSafety, and a measure referenced only inside a wrapper would never be projected into the SELECT list. Only strips SUM/COUNT/AVG/MIN/MAX wrapped around a bare column that is a measure key; `COUNT(*)`, `COUNT(DISTINCT x)`, and aggregates over non-measure columns are left untouched (the latter still fall through to the existing HAVING-must-reference-a-measure check).
+
+- [ ] Add optional model-level `timezone` field
+    - (IANA name, no default — miniml must not assume a timezone) so the default date range resolves "today" in the model's timezone instead of the warehouse default; BigQuery `CURRENT_DATE` is UTC, so e.g. a `last 1 days` Pacific-day model returns zero rows between 5pm and midnight PT. Stage 2 extends the same field to `date_granularity` truncation and explicit date_from/date_to literal coercion for TIMESTAMP-typed date fields so filtering and grouping agree. Full design: [.plan/timezone-support.md](.plan/timezone-support.md)

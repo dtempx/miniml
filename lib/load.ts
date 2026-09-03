@@ -102,6 +102,8 @@ function expandMetadataDefs(dictionary: Record<string, MinimlDef>): void {
             dictionary[key] = { key, description: obj };
         else if (Array.isArray(obj))
             dictionary[key] = { key, description: obj[0], sql: obj[1], join: obj[2] };
+        else if (obj && typeof obj === "object" && !obj.key)
+            obj.key = key; // object format omits `key`; without it the SQL alias renders as "undefined"
     }
 }
 

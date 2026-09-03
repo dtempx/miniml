@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { loadModelSync } from "../lib/load.js";
+import { loadModelSync, createModel } from "../lib/load.js";
 import { renderQuery } from "../lib/query.js";
 import { validateWhereClause, validateHavingClause, validateDateInput } from "../lib/validation.js";
 import { SqlValidationError } from "../lib/common.js";
@@ -1017,5 +1017,113 @@ describe("BigQuery Quote Normalization (renderQuery)", () => {
         });
 
         expect(sql).to.include("Lowe''s");
+    });
+});
+describe("Object-Format Definitions (expandMetadataDefs)", () => {
+    it("aliases an object-format dimension with its key, not 'undefined'", () => {
+        
+        const model = createModel({
+            dialect: "snowflake",
+            from: "db.schema.t",
+            dimensions: {
+                plain: "a plain column",
+                fancy: { description: "derived column", sql: "UPPER(plain)" }
+            },
+            measures: {
+                count: { description: "row count", sql: "COUNT(*)" }
+            }
+        });
+        const sql = renderQuery(model, { dimensions: ["fancy"], measures: ["count"] });
+        expect(sql).to.include("UPPER(plain) AS fancy");
+        expect(sql).to.not.include("undefined");
+    });
+});
+
+describe("Redundant Aggregate Stripping (HAVING)", () => {
+    let model: MinimlModel;
+
+    before(() =>
+        model = loadModelSync("test/validation.test.yaml"));
+
+    it("strips an aggregate wrapped around a measure alias", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["total_amount"],
+            having: "SUM(total_amount) > 1000"
+        });
+
+        expect(sql).to.include("HAVING total_amount > 1000");
+        expect(sql).to.not.include("SUM(total_amount) >");
+    });
+
+    it("strips aggregates across a compound HAVING clause", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["total_amount", "count"],
+            having: "SUM(count) > 500 AND SUM(total_amount) IS NULL"
+        });
+
+        expect(sql).to.include("HAVING count > 500 AND total_amount IS NULL");
+    });
+
+    it("strips a non-SUM aggregate wrapped around its measure alias", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["price_avg"],
+            having: "AVG(price_avg) > 10"
+        });
+
+        expect(sql).to.include("HAVING price_avg > 10");
+    });
+
+    it("leaves a bare measure alias untouched", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["total_amount"],
+            having: "total_amount > 1000"
+        });
+
+        expect(sql).to.include("HAVING total_amount > 1000");
+    });
+
+    it("does not strip COUNT(*)", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["count"],
+            having: "COUNT(*) > 5"
+        });
+
+        expect(sql).to.include("HAVING COUNT(*) > 5");
+    });
+
+    it("does not strip an aggregate over a non-measure column", () => {
+        // unit_price is not a measure key, so the SUM() must survive stripping and
+        // fall through to the existing HAVING-must-reference-a-measure check.
+        expect(() => renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["total_amount"],
+            having: "SUM(unit_price) > 10"
+        })).to.throw(SqlValidationError).with.property('message').that.includes('unit_price');
+    });
+
+    it("does not strip COUNT(DISTINCT ...) over a dimension", () => {
+        expect(() => renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["count"],
+            having: "COUNT(DISTINCT product_id) > 2"
+        })).to.throw(SqlValidationError).with.property('message').that.includes('product_id');
+    });
+
+    it("projects a measure referenced only via a wrapped aggregate in HAVING", () => {
+        const sql = renderQuery(model, {
+            dimensions: ["store_name"],
+            measures: ["total_amount"],
+            having: "SUM(count) > 5"
+        });
+
+        // count was only referenced wrapped in SUM(); stripping must happen before
+        // reference extraction so the alias still lands in the SELECT list.
+        expect(sql).to.include("COUNT(*) AS count");
+        expect(sql).to.include("HAVING count > 5");
     });
 });

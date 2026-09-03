@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npm test *)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(git -C /home/user/projects/miniml log --oneline -S \"half-open\" -- lib/query.ts)"
+    ],
+    "additionalDirectories": [
+      "/home/user/pricespider/mcp/bigdata/lib"
     ]
   }
 }

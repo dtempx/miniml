@@ -1,5 +1,5 @@
 import { MinimlDef, MinimlModel, SqlValidationError } from "./common.js";
-import { validateWhereClause, validateHavingClause, validateDateInput } from "./validation.js";
+import { validateWhereClause, validateHavingClause, validateDateInput, stripRedundantAggregates } from "./validation.js";
 import { extractFieldReferences } from "./parse.js";
 import { constructDateRangeExpression, constructDateTruncExpression, normalizeQuotesForBigQuery } from "./dialect.js"
 
@@ -32,6 +32,10 @@ export function renderQuery(model: MinimlModel, {
         where = normalizeQuotesForBigQuery(where);
         having = normalizeQuotesForBigQuery(having);
     }
+
+    // Must run before extraction and validation: the aggregate wrapper would
+    // otherwise trip the safe-function whitelist in validateAstSafety.
+    having = stripRedundantAggregates(having, model);
 
     const where_refs = extractFieldReferences(where, model);
     const having_refs = extractFieldReferences(having, model);
@@ -126,11 +130,16 @@ export function renderQuery(model: MinimlModel, {
 
     const where_clause: string[] = [];
     if (model.date_field) {
-        // Use a half-open range [date_from, date_to + 1 day) rather than
-        // BETWEEN 'date_from' AND 'date_to'. On a TIMESTAMP column the inclusive
-        // upper bound only matches midnight of date_to, so any single-day range
-        // (date_from === date_to) returns no rows. Adding a day and using an
-        // exclusive upper bound captures the whole date_to day.
+        // Both bounds are inclusive of whole days: the range covers every row
+        // from the start of date_from through the end of date_to. Expressed as a
+        // half-open interval [date_from, date_to + 1 day) so that the date_to day
+        // is included in full even when date_field carries a time component.
+        // 
+        // NOTE: A request for date_from === date_to === '2026-06-26' therefore
+        // becomes `>= '2026-06-26' AND < '2026-06-27'`, which spans that entire
+        // day. Whereas an inclusive `<= '2026-06-26'` upper bound would instead
+        // match only rows at exactly midnight, so a single-day request would
+        // return nearly nothing on a TIMESTAMP column.
         //
         // The upper bound is emitted as a bare next-day string literal (e.g.
         // < '2026-06-27') rather than DATE_ADD('2026-06-26', INTERVAL 1 DAY).
