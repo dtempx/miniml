@@ -9,7 +9,12 @@ To replicate results in the README...
 
 ## NPM publish steps
 ```sh
-export BROWSER="/mnt/c/Windows/System32/cmd.exe /c start chrome.exe"
 npm login
 npm publish
+```
+
+Workaround for error `npm error Set the BROWSER environment variable to your desired browser`
+
+```sh
+export BROWSER="/mnt/c/Windows/System32/cmd.exe /c start chrome.exe"
 ```
