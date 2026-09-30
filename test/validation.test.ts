@@ -1127,3 +1127,75 @@ describe("Redundant Aggregate Stripping (HAVING)", () => {
         expect(sql).to.include("HAVING count > 5");
     });
 });
+
+describe("WHERE reference expansion", () => {
+    let model: MinimlModel;
+
+    before(() =>
+        model = loadModelSync("test/validation.test.yaml"));
+
+    it("expands a bare dimension reference to its qualified SQL", () => {
+        const sql = renderQuery(model, {
+            measures: ["count"],
+            where: "date = '2026-01-01'"
+        });
+        expect(sql).to.include("DATE(sale_date) = '2026-01-01'");
+    });
+
+    it("does not rewrite the interior of a quoted identifier", () => {
+        // "local" is a reserved word, so callers quote it; the qualifier must not
+        // land inside the quotes ("s.local"), which Snowflake reads as one column name.
+        const sql = renderQuery(model, {
+            measures: ["count"],
+            where: '"local" = TRUE'
+        });
+        expect(sql).to.include('"local" = TRUE');
+        expect(sql).to.not.include('"s.local"');
+    });
+
+    it("does not rewrite a matching string literal", () => {
+        const sql = renderQuery(model, {
+            measures: ["count"],
+            where: "store_name = 'local'"
+        });
+        expect(sql).to.include("'local'");
+        expect(sql).to.not.include("'s.local'");
+    });
+
+    it("does not re-scan substituted text with a later key", () => {
+        // date expands to DATE(sale_date), whose interior mentions no other key; no
+        // substitution may be applied to text produced by a previous one.
+        const sql = renderQuery(model, {
+            measures: ["count"],
+            where: "date = '2026-01-01' AND customer_name = 'x'"
+        });
+        expect(sql).to.include("DATE(sale_date) = '2026-01-01'");
+        expect(sql).to.not.include("DATE(DATE(");
+    });
+
+    it("leaves a clause with no expandable references unchanged", () => {
+        const sql = renderQuery(model, {
+            measures: ["count"],
+            where: "sale_id = 42"
+        });
+        expect(sql).to.include("sale_id = 42");
+    });
+});
+
+describe("WHERE expansion cascade", () => {
+    let model: MinimlModel;
+
+    before(() =>
+        model = loadModelSync("test/validation.test.yaml"));
+
+    it("does not expand a key that appears inside an earlier substitution", () => {
+        // region -> "s.store_id". The text "store_id" is itself a dimension key, but it
+        // was produced by expansion and must not be substituted again.
+        const sql = renderQuery(model, {
+            measures: ["count"],
+            where: "region = 5"
+        });
+        expect(sql).to.include("s.store_id = 5");
+        expect(sql).to.not.include("s.s.store_id");
+    });
+});

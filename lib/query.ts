@@ -243,23 +243,35 @@ function applyDateGranularity(date_granularity: string, key: string, date_expr: 
 
 // Replaces specific keys in a where clause with their corresponding SQL expressions
 // from a dictionary, but only for keys where the SQL expression is a valid function-wrapped expression.
+// Quoted identifiers ("local") and string literals ('local') are left untouched, and the whole clause is
+// rewritten in a single pass so that substituted text is never re-scanned by a later key.
 function expandWhereReferences(where_clause: string, dictionary: Record<string, MinimlDef>): string {
     if (!where_clause)
         return where_clause;
-    let result = where_clause;
+
+    const replacements = new Map<string, string>();
     for (const key of Object.keys(dictionary)) {
-        const regexp = new RegExp(`\\b${key}\\b`, "g");
-        if (regexp.test(where_clause)) {
-            const { sql } = dictionary[key];
-            if (sql !== key) {
-                // unwrap the SQL expression without the alias
-                const unwrapped = sql?.includes(" AS ") ? sql.slice(0, sql.lastIndexOf(" AS ")).trim() : undefined;
-                if (unwrapped)
-                    result = result.replaceAll(regexp, unwrapped); // replace key with sql expression
-            }
+        const { sql } = dictionary[key];
+        if (sql !== key) {
+            // unwrap the SQL expression without the alias
+            const unwrapped = sql?.includes(" AS ") ? sql.slice(0, sql.lastIndexOf(" AS ")).trim() : undefined;
+            if (unwrapped)
+                replacements.set(key, unwrapped);
         }
     }
-    return result;
+    if (replacements.size === 0)
+        return where_clause;
+
+    // Match quoted identifiers and string literals first so they win over a bare key match and are
+    // preserved verbatim; only unquoted identifiers are eligible for substitution.
+    const keys = [...replacements.keys()].map(escapeRegExp).join("|");
+    const regexp = new RegExp(`"(?:[^"]|"")*"|'(?:[^']|'')*'|\\b(?:${keys})\\b`, "g");
+    return where_clause.replaceAll(regexp, match =>
+        replacements.get(match) ?? match); // quoted matches are absent from the map and pass through
+}
+
+function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function unwrapSqlExpressionAlias(exprression: string): [string] | [string, string] {

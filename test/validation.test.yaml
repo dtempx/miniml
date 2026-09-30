@@ -36,6 +36,14 @@ dimensions:
     - store_join
   tags:
     - Array of tags associated with the product.
+  local:
+    - Boolean. Whether the sale occurred in a physical store. Name collides with a SQL reserved word.
+    - s.local
+    - store_join
+  region:
+    - Sales region. Expands to an expression whose text mentions another dimension key.
+    - s.store_id
+    - store_join
 
 measures:
   total_amount:
